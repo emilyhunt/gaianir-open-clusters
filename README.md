@@ -15,5 +15,7 @@ uv sync
 
 in this directory to install all dependencies.
 
+You will also need to download and extract [this zip file](https://drive.google.com/file/d/1wMXymFHo-K5jdIGoJi5oGuHeXSa3JVmu/view) for [ocelot](https://ocelot-docs.org/installation/) into the `data` directory. (So, you should have a folder data/ocelot_data/isochrones/...).
+
 The first time that you run certain scripts may cause data to be downloaded. A few GB of storage space will be used.
 
