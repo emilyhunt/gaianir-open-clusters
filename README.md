@@ -15,7 +15,8 @@ uv sync
 
 in this directory to install all dependencies.
 
-You will also need to download and extract [this zip file](https://drive.google.com/file/d/1wMXymFHo-K5jdIGoJi5oGuHeXSa3JVmu/view) for [ocelot](https://ocelot-docs.org/installation/) into the `data` directory. (So, you should have a folder data/ocelot_data/isochrones/...).
+To use the code in practice, you will also need quite a lot of bits of data (atmosphere models, isochrones, and more). These can be downloaded automatically with the script `fetch_data.py`, which can be ran with
 
-The first time that you run certain scripts may cause data to be downloaded. A few GB of storage space will be used.
-
+```bash
+uv run fetch_data.py
+```
