@@ -2,8 +2,9 @@
 
 import numpy as np
 import pandas as pd
-from scipy.interpolate import LinearNDInterpolator, RegularGridInterpolator
+from scipy.interpolate import LinearNDInterpolator, RegularGridInterpolator, interp1d
 from gaianir_open_clusters.gaia_nir_config import ASTROMETRIC_DATA
+from gaianir_open_clusters.photometry import FILTERS
 
 
 # N.B. may break if the astrometric data model changes format significantly
@@ -133,6 +134,55 @@ class AstrometryModel:
         pmdec_error = pmra_error
 
         return pmra_error, pmdec_error, parallax_error
+
+
+class AstrometryModelElectronBased:
+    def __init__(self, mission="GaiaNIR-L", years=10):
+        if not isinstance(mission, int):
+            if mission == "Gaia":
+                mission = 1
+            elif mission == "GaiaNIR-M":
+                mission = 2
+            elif mission == "GaiaNIR-L":
+                mission = 3
+            else:
+                raise ValueError("'mission' kwarg not recognized")
+        self.mission = mission
+        self.years = years
+        electrons, parallax_error = self._read_astrometric_data()
+
+        self._interpolator = interp1d(
+            electrons,
+            parallax_error,
+            bounds_error=False,
+            fill_value=(parallax_error.max(), parallax_error.min()),
+        )
+
+    def _read_astrometric_data(self):
+        file = ASTROMETRIC_DATA / f"ukB1V/M{self.mission}Yr{self.years}G.dat"
+        data = pd.read_csv(
+            file, delimiter=r"\s+", names=["G", "parallax_error", "electrons"]
+        )
+        return data["electrons"].to_numpy(), data["parallax_error"].to_numpy()
+
+    def predict(self, magnitude):
+        electrons = self.mag_to_electrons(magnitude)
+
+        parallax_error = self._interpolator(electrons) / 1000
+        pmra_error = parallax_error / (self.years / 2.5)
+        pmdec_error = pmra_error
+        return pmra_error, pmdec_error, parallax_error
+
+    def mag_to_electrons(self, mag):
+        # Magic number that calibrates from David's GaiaNIR sims (which include e.g. the
+        # telescope size) against mine
+        # Todo: this ought to be a data-driven number
+        calibration_factor = 427.54392151861185 / 10.738344786983658
+
+        if self.mission == 2:
+            calibration_factor /= 2
+
+        return 10 ** ((mag - FILTERS["N"].Vega_zero_mag) / -2.5) * calibration_factor
 
 
 def combine_astrometry(
