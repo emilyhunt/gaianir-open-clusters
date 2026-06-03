@@ -2,7 +2,7 @@
 
 import numpy as np
 import pandas as pd
-from scipy.interpolate import LinearNDInterpolator
+from scipy.interpolate import LinearNDInterpolator, RegularGridInterpolator
 from gaianir_open_clusters.gaia_nir_config import ASTROMETRIC_DATA
 
 
@@ -77,25 +77,39 @@ class AstrometryModel:
         return data
 
     def _build_astrometric_uncertainty_interpolators(self, data):
-        data_ms = pd.concat([data[type] for type in _main_sequence], ignore_index=True)
-        data_giant = pd.concat(
-            [data[type] for type in _main_sequence], ignore_index=True
+        data_ms = (
+            pd.concat([data[type] for type in _main_sequence], ignore_index=True)
+            .sort_values(["G", "teff"])
+            .reset_index(drop=True)
+        )
+        data_giant = (
+            pd.concat([data[type] for type in _main_sequence], ignore_index=True)
+            .sort_values(["G", "teff"])
+            .reset_index(drop=True)
         )
 
-        self._main_sequence_interpolator = LinearNDInterpolator(
-            data_ms[["G", "teff"]].to_numpy(), data_ms["parallax_error"], rescale=True
+        ms_grid = data_ms["G"].unique(), data_ms["teff"].unique()
+        giant_grid = (data_giant["G"].unique(), data_giant["teff"].unique())
+
+        ms_y = (
+            data_ms["parallax_error"]
+            .to_numpy()
+            .reshape(ms_grid[0].size, ms_grid[1].size)
         )
-        self._giant_interpolator = LinearNDInterpolator(
-            data_giant[["G", "teff"]].to_numpy(),
-            data_giant["parallax_error"],
-            rescale=True,
+        giant_y = (
+            data_giant["parallax_error"]
+            .to_numpy()
+            .reshape(giant_grid[0].size, giant_grid[1].size)
         )
 
-    def predict(self, data):
+        self._main_sequence_interpolator = RegularGridInterpolator(ms_grid, ms_y)
+        self._giant_interpolator = RegularGridInterpolator(giant_grid, giant_y)
+
+    def predict(self, data, mag_column="G", temperature_column="teff"):
         is_giant = data["label"] >= 2
         is_ms = np.invert(is_giant)
 
-        to_use = data[["G", "teff"]].to_numpy()
+        to_use = data[[mag_column, temperature_column]].to_numpy()
         to_use[is_giant, 1] = np.clip(
             to_use[is_giant, 1], self.giant_temp_range[0], self.giant_temp_range[1]
         )
@@ -109,11 +123,26 @@ class AstrometryModel:
         parallax_error[is_giant] = self._giant_interpolator(to_use[is_giant])
         parallax_error[is_ms] = self._main_sequence_interpolator(to_use[is_ms])
 
+        # Convert to mas
+        parallax_error = parallax_error / 1000
+
         # Also add proper motion errors, given scaling relations in Hobbs+ (in prep.)
         # position_error = 0.75 * parallax_error
-
         # Todo I am not quite sure how to get to pmra error from parallax error - check this!
         pmra_error = parallax_error / (self.years / 2.5)
         pmdec_error = pmra_error
 
         return pmra_error, pmdec_error, parallax_error
+
+
+def combine_astrometry(
+    pmra_error_1,
+    pmdec_error_1,
+    pmra_error_2,
+    pmdec_error_2,
+    separation,
+):
+    pmra_error_combined = (pmra_error_1**-2 + pmra_error_2**-2) ** -0.5 / separation
+    pmdec_error_combined = (pmdec_error_1**-2 + pmdec_error_2**-2) ** -0.5 / separation
+
+    return pmra_error_combined, pmdec_error_combined

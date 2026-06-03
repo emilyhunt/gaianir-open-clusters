@@ -17,13 +17,45 @@ from astropy.units import Quantity
 from astropy import units as u
 
 from gaianir_open_clusters.gaia_nir_config import GAIA_NIR_MINIMUM_SEPARATION
+from gaianir_open_clusters.photometry import (
+    FILTERS,
+    PhotometricModel,
+    EXTINCTION_MODELS,
+)
+from gaianir_open_clusters.astrometry import AstrometryModel, combine_astrometry
+from ocelot.model.observation.gaia.photutils import AG
+
+
+_photometric_model_correct_band_names = PhotometricModel()
+_photometric_model_correct_band_names.photometric_bands = [
+    "gaianir_n_true",
+    "gaianir_r_true",
+    "gaianir_j_true",
+    "gaianir_h_true",
+    "gaianir_k_true",
+]
 
 
 class GaiaNIRObservationModel(BaseObservation):
-    def __init__(self, minimum_magnitude=24):
+    def __init__(
+        self,
+        mission_class="GaiaNIR-L",
+        years=10,
+        combined_astrometry=True,
+        maximum_magnitude=24,
+        gaia_gaianir_separation=20,
+        gaia_gaianir_max_gaia_magnitude=19,
+    ):
         """A model for an observation made with Gaia DR3."""
         self.simulated_cluster = None  # To prevent it being removed # Todo: somehow stop issues with model not being re-assignable
-        self.minimum_magnitude = minimum_magnitude
+
+        # Various stats about the model
+        self.mission_class = mission_class
+        self.years = years
+        self.combined_astrometry = combined_astrometry
+        self.maximum_magnitude = maximum_magnitude
+        self.gaia_gaianir_separation = gaia_gaianir_separation
+        self.gaia_gaianir_max_gaia_magnitude = gaia_gaianir_max_gaia_magnitude
 
     @property
     def name(self) -> str:
@@ -31,12 +63,16 @@ class GaiaNIRObservationModel(BaseObservation):
 
         Should return a lowercase string, like 'gaia_dr3'.
         """
-        return "gaia_dr3"
+        combined = ""
+        if self.combined_astrometry:
+            combined = "-(combined)"
+
+        return f"{self.mission_class.lower()}-{self.years}{combined}"
 
     @property
     def photometric_band_names(self) -> list[str]:
         """Names of photometric bands modelled by this system."""
-        return ["gaia_nir_n", "gaia_nir_r", "gaia_nir_j", "gaia_nir_h", "gaia_nir_k"]
+        return ["gaianir_n", "gaianir_r", "gaianir_j", "gaianir_h", "gaianir_k"]
 
     @property
     def has_proper_motions(self) -> bool:
@@ -51,62 +87,62 @@ class GaiaNIRObservationModel(BaseObservation):
     ):
         """Calculate photometric errors for a simulated cluster."""
         self._assert_simulated_cluster_not_reused(cluster)
-        if self.matching_stars is None:
-            self.matching_stars, self.stars_to_assign = _closest_gaia_star(
-                cluster.observations["gaia_dr3"], self.representative_stars
-            )
 
-        for band in ("g", "bp", "rp"):
-            cluster.observations["gaia_dr3"].loc[
-                self.stars_to_assign, f"gaia_dr3_{band}_flux_error"
-            ] = self.matching_stars[f"phot_{band}_mean_flux_error"].to_numpy()
+        # Todo add photometric errors
+        return
 
     def apply_photometric_errors(
         self, cluster: ocelot.simulate.cluster.SimulatedCluster
     ):
-        """Custom method to apply photometric errors to a simulated cluster.
-
-        Method incorporates the underestimated BP and RP flux measurement issue in DR3.
-
-        Follows things discussed in Riello+21, section 8.1.
-        """
-        observation = cluster.observations["gaia_dr3"]
-
-        # Calculate true flux
-        fluxes = {}
-        for band in self.photometric_band_names:
-            fluxes[band] = self.mag_to_flux(observation[band].to_numpy(), band)
-
-        # For BP and RP, count how many times Gaia would have observed the star, and
-        # then reverse-apply the flux calculation mistake in Gaia DR3
-        if self.overestimate_bp_rp_fluxes:
-            for band in ["gaia_dr3_bp", "gaia_dr3_rp"]:
-                fluxes = self._apply_incorrect_flux_summing_to_flux(
-                    observation, fluxes, band
-                )
-
-        # Now, finally, we can apply photometric errors from other sources & move on!
-        for band in self.photometric_band_names:
-            new_fluxes = cluster.random_generator.normal(
-                loc=fluxes[band],
-                scale=observation[f"{band}_flux_error"].to_numpy(),
-            )
-            observation[band] = self.flux_to_mag(new_fluxes, band)
+        pass
 
     def calculate_astrometric_errors(
         self, cluster: ocelot.simulate.cluster.SimulatedCluster
     ):
         """Calculate astrometric errors for a simulated cluster."""
         self._assert_simulated_cluster_not_reused(cluster)
-        if self.matching_stars is None:
-            self.matching_stars, self.stars_to_assign = _closest_gaia_star(
-                cluster.observations["gaia_dr3"], self.representative_stars
+        observation = cluster.observations[self.name]
+
+        # The astrometric models are relative to Gaia G, which isn't quite the same as N
+        # (especially with some reddening.) As an approximation, we just take the true
+        # G magnitude for the star and add an offset relative to the N-band extinction
+        # that the star would receive.
+        observation["g_effective"] = (
+            observation["gaia_dr3_g_true"] + observation["extinction_gaianir_n"]
+        )
+
+        gaia_nir_model = AstrometryModel(self.mission_class, self.years)
+        pmra_error, pmdec_error, parallax_error = gaia_nir_model.predict(
+            observation, mag_column="g_effective", temperature_column="temperature"
+        )
+
+        # Optionally also combine astrometry from Gaia to the GaiaNIR observation
+        if self.combined_astrometry:
+            observation["g_effective_gaia"] = observation["gaia_dr3_g_true"] + AG(
+                observation["extinction"], observation["temperature"]
+            )
+            gaia_model = AstrometryModel(mission="Gaia", years=10)
+            good_stars = (
+                observation["g_effective_gaia"] < self.gaia_gaianir_max_gaia_magnitude
+            )
+            pmra_error_past, pmdec_error_past, _ = gaia_model.predict(
+                observation.loc[good_stars],
+                mag_column="g_effective_gaia",
+                temperature_column="temperature",
+            )
+            pmra_error[good_stars], pmdec_error[good_stars] = combine_astrometry(
+                pmra_error[good_stars],
+                pmdec_error[good_stars],
+                pmra_error_past,
+                pmdec_error_past,
+                separation=self.gaia_gaianir_separation
+                + gaia_model.years / 2
+                + gaia_nir_model.years / 2,
             )
 
-        for column in ("pmra_error", "pmdec_error", "parallax_error"):
-            cluster.observations["gaia_dr3"].loc[self.stars_to_assign, column] = (
-                self.matching_stars[column].to_numpy()
-            )
+        observation["pmra_error"] = pmra_error
+        observation["pmdec_error"] = pmdec_error
+        observation["parallax_error"] = parallax_error
 
     def get_selection_functions(
         self, cluster: ocelot.simulate.cluster.SimulatedCluster
@@ -117,12 +153,33 @@ class GaiaNIRObservationModel(BaseObservation):
 
     def calculate_extinction(self, cluster: ocelot.simulate.cluster.SimulatedCluster):
         """Applies extinction in a given photometric band observed in this dataset."""
-        observation = cluster.observations["gaia_dr3"]
+        observation = cluster.observations[self.name]
 
-        for band, func in zip(self.photometric_band_names, (AG, ABP, ARP)):
-            observation[f"extinction_{band}"] = func(
-                observation["extinction"], observation["temperature"]
-            )
+        # Add photometry
+        # Todo: ocelot: there should really be a make_photometry() function!
+        observation = _photometric_model_correct_band_names(observation)
+        observation[self.photometric_band_names] = (
+            observation[self.photometric_band_names]
+            + 5 * np.log10(cluster.parameters.distance)
+            - 5
+        )
+
+        # Then calculate reddening
+        query_data = pd.DataFrame.from_dict(
+            {
+                "A0": np.clip(
+                    observation["extinction"], 0, 50
+                ),  # Clip as relation only valid to A_V=50
+                "R0": 3.1,
+                "teff": observation["temperature"],
+            }
+        )
+        for band in self.photometric_band_names:
+            short_name = band.split("_")[1].upper()
+            if short_name != "N":
+                short_name = f"N_{short_name}"
+            ax_over_a0 = EXTINCTION_MODELS[short_name].predict(query_data)
+            observation[f"extinction_{band}"] = observation["extinction"] * ax_over_a0
 
     def calculate_resolving_power(
         self,
@@ -139,30 +196,21 @@ class GaiaNIRObservationModel(BaseObservation):
         self, magnitude: int | float | ArrayLike, band: str
     ) -> int | float | ArrayLike:
         """Convert a magnitude in some band into a flux in some band."""
-        self._check_band_name(band)
         magnitude = np.atleast_1d(magnitude)
-        return 10 ** (
-            (self.ZEROPOINTS[band] - magnitude) / 2.5
-        )  # todo actually always returns a np.ndarray
+        return 10 ** ((FILTERS[band].Vega_zero_mag - magnitude) / 2.5)
 
     def flux_to_mag(
         self, flux: int | float | ArrayLike, band: str
     ) -> int | float | ArrayLike:
         """Convert a flux in some band into a magnitude in some band."""
-        self._check_band_name(band)
         flux = np.atleast_1d(flux)
         # We safely handle negative fluxes - they're set to inf
         good_fluxes = flux > 0
-        magnitude = -2.5 * np.log10(flux, where=good_fluxes) + self.ZEROPOINTS[band]
+        magnitude = (
+            -2.5 * np.log10(flux, where=good_fluxes) + FILTERS[band].Vega_zero_mag
+        )
         magnitude[np.invert(good_fluxes)] = np.inf
         return magnitude  # todo actually always returns a np.ndarray
-
-    def _check_band_name(self, band: str):
-        if band not in self.ZEROPOINTS:
-            raise ValueError(
-                f"band {band} is not the correct name of a photometric band modelled "
-                "in this observation."
-            )
 
     def _assert_simulated_cluster_not_reused(
         self, cluster: ocelot.simulate.cluster.SimulatedCluster
@@ -178,11 +226,11 @@ class GaiaNIRObservationModel(BaseObservation):
 
 
 class GaiaNIRSelectionFunction(BaseSelectionFunction):
-    def __init__(self, minimum_magnitude):
+    def __init__(self, maximum_magnitude):
         """Gaia NIR selection function. Very approximate! For now, just assumes G>min is
         not observed.
         """
-        self.minimum_magnitude = minimum_magnitude
+        self.maximum_magnitude = maximum_magnitude
 
     def _query(self, observation: pd.DataFrame) -> np.ndarray:
-        return (observation["gaia_nir_n"] < self.minimum_magnitude).astype(float)
+        return (observation["gaianir_n"] < self.maximum_magnitude).astype(float)

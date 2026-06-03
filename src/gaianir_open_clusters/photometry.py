@@ -11,6 +11,7 @@ from pathlib import Path
 import pandas as pd
 import astropy.units as u
 from astropy import constants
+from dustapprox.models import PolynomialModel
 
 
 # Initialize all GaiaNIR filters & corresponding information
@@ -80,17 +81,20 @@ class PhotometricModel:
     def predict(self, data):
         """Predict GaiaNIR (absolute) photometry in all bands."""
         # Some initial calculations
-        data["teff"] = 10 ** data["logTe"]
-        data["lum"] = 10 ** data["logL"] * constants.L_sun.value
+        # data["teff"] = 10 ** data["logTe"]
+        # data["lum"] = 10 ** data["logL"] * constants.L_sun.value
         data["radius"] = np.sqrt(
-            data["lum"] / (4 * np.pi * constants.sigma_sb.value * data["teff"] ** 4)
+            data["luminosity"]
+            / (4 * np.pi * constants.sigma_sb.value * data["temperature"] ** 4)
         )
 
         # Grab radius-free photometry
-        x = data[["teff", "logg", "MH"]].copy()
-        x["teff"] = np.clip(x["teff"], self._min_teff, self._max_teff)
+        x = data[["temperature", "logg", "MH"]].copy()
+        x["temperature"] = np.clip(x["temperature"], self._min_teff, self._max_teff)
         x["logg"] = np.clip(
-            x["logg"], self._min_log_g_int(x["teff"]), self._max_log_g_int(x["teff"])
+            x["logg"],
+            self._min_log_g_int(x["temperature"]),
+            self._max_log_g_int(x["temperature"]),
         )
         result = self._interpolator(x.to_numpy())
 
@@ -101,9 +105,9 @@ class PhotometricModel:
         ).reshape(-1, 1)
 
         # Apply a bad temperature correction to any stars with clipped teff
-        temperature_offset = 4 * np.log10(x["teff"] / data["teff"]).to_numpy().reshape(
-            -1, 1
-        )
+        temperature_offset = 4 * np.log10(
+            x["temperature"] / data["temperature"]
+        ).to_numpy().reshape(-1, 1)
 
         # Assign & return
         result = result - radii_offset + temperature_offset
@@ -114,3 +118,9 @@ class PhotometricModel:
 
 
 PHOTOMETRY_PREDICTOR = PhotometricModel()
+
+EXTINCTION_MODELS = {}
+for band in "N", "N_R", "N_J", "N_H", "N_K":
+    EXTINCTION_MODELS[band] = PolynomialModel.from_file(
+        RESULTS_DIRECTORY / "extinction_model.ecsv", band
+    )
