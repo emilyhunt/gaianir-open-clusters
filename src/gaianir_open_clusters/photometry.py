@@ -78,21 +78,27 @@ class PhotometricModel:
         y_big = self._photometric_grid[self.photometric_bands]
         self._interpolator = LinearNDInterpolator(x, y_big)
 
-    def predict(self, data):
+    def predict(self, data, metallicity, luminosity_in_L_sun=False):
         """Predict GaiaNIR (absolute) photometry in all bands."""
         # Some initial calculations
         # data["teff"] = 10 ** data["logTe"]
         # data["lum"] = 10 ** data["logL"] * constants.L_sun.value
+        luminosity_multiplier = 1
+        if luminosity_in_L_sun:
+            luminosity_multiplier = constants.L_sun.value
+
         data["radius"] = np.sqrt(
-            data["luminosity"]
+            data["luminosity"] * luminosity_multiplier
             / (4 * np.pi * constants.sigma_sb.value * data["temperature"] ** 4)
         )
 
         # Grab radius-free photometry
-        x = data[["temperature", "logg", "MH"]].copy()
+        x = data[["temperature", "log_g"]].copy()
+        x["metallicity"] = metallicity
+
         x["temperature"] = np.clip(x["temperature"], self._min_teff, self._max_teff)
-        x["logg"] = np.clip(
-            x["logg"],
+        x["log_g"] = np.clip(
+            x["log_g"],
             self._min_log_g_int(x["temperature"]),
             self._max_log_g_int(x["temperature"]),
         )

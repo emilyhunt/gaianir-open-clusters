@@ -22,7 +22,11 @@ from gaianir_open_clusters.photometry import (
     PhotometricModel,
     EXTINCTION_MODELS,
 )
-from gaianir_open_clusters.astrometry import AstrometryModel, combine_astrometry
+from gaianir_open_clusters.astrometry import (
+    AstrometryModel,
+    AstrometryModelElectronBased,
+    combine_astrometry,
+)
 from ocelot.model.observation.gaia.photutils import AG
 
 
@@ -43,8 +47,8 @@ class GaiaNIRObservationModel(BaseObservation):
         years=10,
         combined_astrometry=True,
         maximum_magnitude=24,
-        gaia_gaianir_separation=20,
-        gaia_gaianir_max_gaia_magnitude=19,
+        combined_astrometry_separation=20,
+        combined_astrometry_max_gaia_mag=19,
     ):
         """A model for an observation made with Gaia DR3."""
         self.simulated_cluster = None  # To prevent it being removed # Todo: somehow stop issues with model not being re-assignable
@@ -54,8 +58,10 @@ class GaiaNIRObservationModel(BaseObservation):
         self.years = years
         self.combined_astrometry = combined_astrometry
         self.maximum_magnitude = maximum_magnitude
-        self.gaia_gaianir_separation = gaia_gaianir_separation
-        self.gaia_gaianir_max_gaia_magnitude = gaia_gaianir_max_gaia_magnitude
+        self.combined_astrometry_separation = (
+            combined_astrometry_separation  # years between missions
+        )
+        self.combined_astrometry_max_gaia_mag = combined_astrometry_max_gaia_mag
 
     @property
     def name(self) -> str:
@@ -107,23 +113,24 @@ class GaiaNIRObservationModel(BaseObservation):
         # (especially with some reddening.) As an approximation, we just take the true
         # G magnitude for the star and add an offset relative to the N-band extinction
         # that the star would receive.
-        observation["g_effective"] = (
-            observation["gaia_dr3_g_true"] + observation["extinction_gaianir_n"]
-        )
+        # observation["g_effective"] = (
+        #     observation["gaia_dr3_g_true"] + observation["extinction_gaianir_n"]
+        # )
 
-        gaia_nir_model = AstrometryModel(self.mission_class, self.years)
+        gaia_nir_model = AstrometryModelElectronBased(self.mission_class, self.years)
         pmra_error, pmdec_error, parallax_error = gaia_nir_model.predict(
-            observation, mag_column="g_effective", temperature_column="temperature"
+            observation["gaianir_n"]
         )
 
         # Optionally also combine astrometry from Gaia to the GaiaNIR observation
-        if self.combined_astrometry:
-            observation["g_effective_gaia"] = observation["gaia_dr3_g_true"] + AG(
-                observation["extinction"], observation["temperature"]
-            )
+        observation["g_effective_gaia"] = observation["gaia_dr3_g_true"] + AG(
+            observation["extinction"], observation["temperature"]
+        )
+        if self.combined_astrometry and cluster.parameters.extinction < 25:
+            observation["label"] = -1  # safe to ignore for Gaia astrometry
             gaia_model = AstrometryModel(mission="Gaia", years=10)
             good_stars = (
-                observation["g_effective_gaia"] < self.gaia_gaianir_max_gaia_magnitude
+                observation["g_effective_gaia"] < self.combined_astrometry_max_gaia_mag
             )
             pmra_error_past, pmdec_error_past, _ = gaia_model.predict(
                 observation.loc[good_stars],
@@ -135,43 +142,58 @@ class GaiaNIRObservationModel(BaseObservation):
                 pmdec_error[good_stars],
                 pmra_error_past,
                 pmdec_error_past,
-                separation=self.gaia_gaianir_separation
+                separation=self.combined_astrometry_separation
                 + gaia_model.years / 2
                 + gaia_nir_model.years / 2,
             )
 
+            observation = observation.drop(columns="label")
+
         observation["pmra_error"] = pmra_error
         observation["pmdec_error"] = pmdec_error
         observation["parallax_error"] = parallax_error
+
+        cluster.observations[self.name] = observation
 
     def get_selection_functions(
         self, cluster: ocelot.simulate.cluster.SimulatedCluster
     ):
         """Get an initialized GaiaNIRSelectionFunction."""
         self._assert_simulated_cluster_not_reused(cluster)
-        return [GaiaNIRSelectionFunction()]
+        return [GaiaNIRSelectionFunction(self.maximum_magnitude)]
 
     def calculate_extinction(self, cluster: ocelot.simulate.cluster.SimulatedCluster):
         """Applies extinction in a given photometric band observed in this dataset."""
-        observation = cluster.observations[self.name]
+        # Remove stars too faint to see (things below PARSEC)
+        # cluster.observations[self.name] = (
+        #     cluster.observations[self.name]
+        #     .loc[cluster.observations[self.name]["temperature"].notna()]
+        #     .reset_index(drop=True)
+        # )
 
         # Add photometry
         # Todo: ocelot: there should really be a make_photometry() function!
-        observation = _photometric_model_correct_band_names(observation)
-        observation[self.photometric_band_names] = (
-            observation[self.photometric_band_names]
+        true_bands = [f"{x}_true" for x in self.photometric_band_names]
+        cluster.observations[self.name] = _photometric_model_correct_band_names.predict(
+            cluster.observations[self.name],
+            cluster.parameters.metallicity,
+            luminosity_in_L_sun=True,
+        )
+        cluster.observations[self.name][true_bands] = (
+            cluster.observations[self.name][true_bands]
             + 5 * np.log10(cluster.parameters.distance)
             - 5
         )
 
         # Then calculate reddening
+        good_stars = cluster.observations[self.name]["temperature"].notna()
         query_data = pd.DataFrame.from_dict(
             {
                 "A0": np.clip(
-                    observation["extinction"], 0, 50
+                    cluster.observations[self.name].loc[good_stars, "extinction"], 0, 50
                 ),  # Clip as relation only valid to A_V=50
                 "R0": 3.1,
-                "teff": observation["temperature"],
+                "teff": cluster.observations[self.name].loc[good_stars, "temperature"],
             }
         )
         for band in self.photometric_band_names:
@@ -179,7 +201,12 @@ class GaiaNIRObservationModel(BaseObservation):
             if short_name != "N":
                 short_name = f"N_{short_name}"
             ax_over_a0 = EXTINCTION_MODELS[short_name].predict(query_data)
-            observation[f"extinction_{band}"] = observation["extinction"] * ax_over_a0
+            cluster.observations[self.name].loc[good_stars, f"extinction_{band}"] = (
+                cluster.observations[self.name].loc[good_stars, "extinction"]
+                * np.asarray(ax_over_a0)
+            )
+
+        # cluster.observations[self.name] = cluster.observations[self.name]
 
     def calculate_resolving_power(
         self,
