@@ -48,7 +48,7 @@ class GaiaNIRObservationModel(BaseObservation):
         combined_astrometry=True,
         maximum_magnitude=24,
         combined_astrometry_separation=20,
-        combined_astrometry_max_gaia_mag=19,
+        combined_astrometry_max_gaia_mag=20,
     ):
         """A model for an observation made with Gaia DR3."""
         self.simulated_cluster = None  # To prevent it being removed # Todo: somehow stop issues with model not being re-assignable
