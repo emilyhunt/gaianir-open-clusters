@@ -1,7 +1,7 @@
 {
     "extinction_map_kwargs": {"name":"no_extinction"},
     "PHOTOMETRIC_OUTPUTS":{
-        "maglim":["Gaia_G_EDR3", 24, "remove"],
+        "maglim":["2MASS_J", 25, "remove"],
         "chosen_bands": ["Gaia_G_EDR3", "Gaia_BP_EDR3", "Gaia_RP_EDR3", "2MASS_J", "2MASS_H", "2MASS_Ks"],
         "obsmag":true,
         "opt_iso_props":["log_L", "log_Teff", "log_g", "[Fe/H]","log_R", "phase"]
