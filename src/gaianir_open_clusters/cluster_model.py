@@ -1,11 +1,11 @@
 """Main class defining an observation made with Gaia DR3."""
 
 from __future__ import annotations
+import ocelot.simulate.cluster
 from ocelot.model.observation._base import (
     BaseObservation,
     BaseSelectionFunction,
 )
-import ocelot.simulate.cluster
 from scipy.interpolate import interp1d
 
 # from gaiaunlimited.selectionfunctions import DR3SelectionFunctionTCG
@@ -16,7 +16,13 @@ from astropy.coordinates import SkyCoord
 from astropy.units import Quantity
 from astropy import units as u
 
-from gaianir_open_clusters.gaia_nir_config import GAIA_NIR_MINIMUM_SEPARATION
+from gaianir_open_clusters.gaia_nir_config import (
+    GAIANIR_ANGULAR_RESOLUTION,
+    COMBINE_GAIA_GAIANIR_ASTROMETRY,
+    GAIA_GAIANIR_SEPARATION,
+    FAINTEST_GAIA_MAGNITUDE_USED,
+    FAINTEST_N_MAGNITUDE_USED,
+)
 from gaianir_open_clusters.photometry import (
     FILTERS,
     PhotometricModel,
@@ -45,10 +51,10 @@ class GaiaNIRObservationModel(BaseObservation):
         self,
         mission_class="GaiaNIR-L",
         years=10,
-        combined_astrometry=True,
-        maximum_magnitude=24,
-        combined_astrometry_separation=20,
-        combined_astrometry_max_gaia_mag=20,
+        maximum_magnitude=FAINTEST_N_MAGNITUDE_USED,
+        combined_astrometry=COMBINE_GAIA_GAIANIR_ASTROMETRY,
+        combined_astrometry_separation=GAIA_GAIANIR_SEPARATION,
+        combined_astrometry_max_gaia_mag=FAINTEST_GAIA_MAGNITUDE_USED,
     ):
         """A model for an observation made with Gaia DR3."""
         self.simulated_cluster = None  # To prevent it being removed # Todo: somehow stop issues with model not being re-assignable
@@ -118,8 +124,8 @@ class GaiaNIRObservationModel(BaseObservation):
         # )
 
         gaia_nir_model = AstrometryModelElectronBased(self.mission_class, self.years)
-        pmra_error, pmdec_error, parallax_error = gaia_nir_model.predict(
-            observation["gaianir_n"]
+        ra_error, dec_error, pmra_error, pmdec_error, parallax_error = (
+            gaia_nir_model.predict(observation["gaianir_n"])
         )
 
         # Optionally also combine astrometry from Gaia to the GaiaNIR observation
@@ -132,16 +138,16 @@ class GaiaNIRObservationModel(BaseObservation):
             good_stars = (
                 observation["g_effective_gaia"] < self.combined_astrometry_max_gaia_mag
             )
-            pmra_error_past, pmdec_error_past, _ = gaia_model.predict(
+            ra_error_past, dec_error_past = gaia_model.predict(
                 observation.loc[good_stars],
                 mag_column="g_effective_gaia",
                 temperature_column="temperature",
-            )
+            )[:2]
             pmra_error[good_stars], pmdec_error[good_stars] = combine_astrometry(
-                pmra_error[good_stars],
-                pmdec_error[good_stars],
-                pmra_error_past,
-                pmdec_error_past,
+                ra_error[good_stars],
+                dec_error[good_stars],
+                ra_error_past,
+                dec_error_past,
                 separation=self.combined_astrometry_separation
                 + gaia_model.years / 2
                 + gaia_nir_model.years / 2,
@@ -160,7 +166,12 @@ class GaiaNIRObservationModel(BaseObservation):
     ):
         """Get an initialized GaiaNIRSelectionFunction."""
         self._assert_simulated_cluster_not_reused(cluster)
-        return [GaiaNIRSelectionFunction(self.maximum_magnitude)]
+
+        column = "gaianir_n"
+        if self.mission_class == "Gaia":
+            column = "g_effective_gaia"
+            
+        return [GaiaNIRSelectionFunction(self.maximum_magnitude, column=column)]
 
     def calculate_extinction(self, cluster: ocelot.simulate.cluster.SimulatedCluster):
         """Applies extinction in a given photometric band observed in this dataset."""
@@ -217,7 +228,9 @@ class GaiaNIRObservationModel(BaseObservation):
         """Calculates the probability that a given pair of stars would be separately
         resolved."""
         separation = separation.to(u.arcsec).value
-        return np.where(separation >= GAIA_NIR_MINIMUM_SEPARATION, 1.0, 0.0)
+        return np.where(
+            separation >= GAIANIR_ANGULAR_RESOLUTION[self.mission_class], 1.0, 0.0
+        )
 
     def mag_to_flux(
         self, magnitude: int | float | ArrayLike, band: str
@@ -253,11 +266,12 @@ class GaiaNIRObservationModel(BaseObservation):
 
 
 class GaiaNIRSelectionFunction(BaseSelectionFunction):
-    def __init__(self, maximum_magnitude):
+    def __init__(self, maximum_magnitude, column="gaianir_n"):
         """Gaia NIR selection function. Very approximate! For now, just assumes G>min is
         not observed.
         """
         self.maximum_magnitude = maximum_magnitude
+        self.column = column
 
     def _query(self, observation: pd.DataFrame) -> np.ndarray:
-        return (observation["gaianir_n"] < self.maximum_magnitude).astype(float)
+        return (observation[self.column] < self.maximum_magnitude).astype(float)
