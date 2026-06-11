@@ -1,4 +1,5 @@
 import gaianir_open_clusters
+import os
 from pathlib import Path
 
 
@@ -9,7 +10,10 @@ RESULTS_DIRECTORY = INSTALLATION_DIRECTORY / "results"
 
 
 # Synthpop things
-SYNTHPOP_SPECIFIC_CONFIG = str(SYNTHPOP_CONFIG_DIRECTORY / "gaia_nir.synthpop_conf")
+SYNTHPOP_GAIANIR_CONFIG = str(SYNTHPOP_CONFIG_DIRECTORY / "gaia_nir.synthpop_conf")
 SYNTHPOP_DEFAULT_CONFIG = str(
     SYNTHPOP_CONFIG_DIRECTORY / "huston2025_defaults.synthpop_conf"
 )
+
+# ocelot things
+os.environ["OCELOT_DATA"] = (DATA_DIRECTORY / "ocelot_data").as_posix()
