@@ -128,19 +128,24 @@ class AstrometryModel:
         parallax_error = parallax_error / 1000
 
         # Also add proper motion errors, given scaling relations in Hobbs+ (in prep.)
-        # position_error = 0.75 * parallax_error
-        # Todo I am not quite sure how to get to pmra error from parallax error - check this!
-        pmra_error = parallax_error / (self.years / 2.5)
-        pmdec_error = pmra_error
+        # and at https://www.cosmos.esa.int/web/gaia/science-performance
+        ra_error = parallax_error * 0.8
+        dec_error = parallax_error * 0.7
 
-        return pmra_error, pmdec_error, parallax_error
+        pmra_error = parallax_error * 0.29 * (10 / self.years)
+        pmdec_error = pmra_error * 0.25 * (10 / self.years)
+
+        return ra_error, dec_error, pmra_error, pmdec_error, parallax_error
 
 
 class AstrometryModelElectronBased:
     def __init__(self, mission="GaiaNIR-L", years=10):
         if not isinstance(mission, int):
             if mission == "Gaia":
-                mission = 1
+                raise ValueError(
+                    "The electron-based model is not correctly calibrated for Gaia - "
+                    "only GaiaNIR. Please just use the simpler AstrometryModel instead."
+                )
             elif mission == "GaiaNIR-M":
                 mission = 2
             elif mission == "GaiaNIR-L":
@@ -169,13 +174,21 @@ class AstrometryModelElectronBased:
         electrons = self.mag_to_electrons(magnitude)
 
         parallax_error = self._interpolator(electrons) / 1000
-        pmra_error = parallax_error / (self.years / 2.5)
-        pmdec_error = pmra_error
-        return pmra_error, pmdec_error, parallax_error
+
+        # Also add proper motion errors, given scaling relations in Hobbs+ (in prep.)
+        # and at https://www.cosmos.esa.int/web/gaia/science-performance
+        ra_error = parallax_error * 0.8
+        dec_error = parallax_error * 0.7
+
+        pmra_error = parallax_error * 0.29 * (10 / self.years)
+        pmdec_error = pmra_error * 0.25 * (10 / self.years)
+
+        return ra_error, dec_error, pmra_error, pmdec_error, parallax_error
 
     def mag_to_electrons(self, mag):
         # Magic number that calibrates from David's GaiaNIR sims (which include e.g. the
-        # telescope size) against mine
+        # telescope size, scan rate, averaging, and all sorts) against my simple
+        # photometric estimations
         # Todo: this ought to be a data-driven number
         calibration_factor = 427.54392151861185 / 10.738344786983658
 
@@ -186,13 +199,13 @@ class AstrometryModelElectronBased:
 
 
 def combine_astrometry(
-    pmra_error_1,
-    pmdec_error_1,
-    pmra_error_2,
-    pmdec_error_2,
+    ra_error_1,
+    dec_error_1,
+    ra_error_2,
+    dec_error_2,
     separation,
 ):
-    pmra_error_combined = (pmra_error_1**-2 + pmra_error_2**-2) ** -0.5 / separation
-    pmdec_error_combined = (pmdec_error_1**-2 + pmdec_error_2**-2) ** -0.5 / separation
+    pmra_error_combined = (ra_error_1**-2 + ra_error_2**-2) ** -0.5 / separation
+    pmdec_error_combined = (dec_error_1**-2 + dec_error_2**-2) ** -0.5 / separation
 
     return pmra_error_combined, pmdec_error_combined
