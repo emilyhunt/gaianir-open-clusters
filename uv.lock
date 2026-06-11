@@ -494,7 +494,7 @@ requires-dist = [
     { name = "dustapprox", specifier = ">=0.2.0" },
     { name = "ipykernel", specifier = ">=7.2.0" },
     { name = "matplotlib", specifier = ">=3.10.9" },
-    { name = "ocelot", specifier = ">=0.4.8" },
+    { name = "ocelot", git = "https://github.com/emilyhunt/ocelot" },
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "pooch", specifier = ">=1.9.0" },
     { name = "pyphot", specifier = ">=2.1.1" },
@@ -1195,8 +1195,8 @@ wheels = [
 
 [[package]]
 name = "ocelot"
-version = "0.4.8"
-source = { registry = "https://pypi.org/simple" }
+version = "0.4.10"
+source = { git = "https://github.com/emilyhunt/ocelot#ccfe3e1da10e6cab4a7160b33c7d349551a99d4f" }
 dependencies = [
     { name = "astropy" },
     { name = "dustmaps" },
@@ -1212,10 +1212,6 @@ dependencies = [
     { name = "pyarrow" },
     { name = "scikit-learn" },
     { name = "scipy" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/5f/3d/68f0626812b5ec8ce1282e44388c6615b07f84aa9d250e63efa126a1dcd4/ocelot-0.4.8.tar.gz", hash = "sha256:1791a3bd82acf0882f0b406edd61a71440c1b4c5edf6d13132f9aefb193ae4d3", size = 118108, upload-time = "2025-11-14T12:53:44.388Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/7b/3a/91ba315ad2dbae5bd7b3f78ecf28cc608e44fb2baec772a33ae96c958b65/ocelot-0.4.8-py3-none-any.whl", hash = "sha256:98cf31d36c80a1e21b4b80f7d3bcc3a9d8c456dc867fed85e18b19e0b5888cc9", size = 125635, upload-time = "2025-11-14T12:53:43.107Z" },
 ]
 
 [[package]]

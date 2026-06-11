@@ -8,7 +8,7 @@ dependencies = [
     "dustapprox>=0.2.0",
     "ipykernel>=7.2.0",
     "matplotlib>=3.10.9",
-    "ocelot>=0.4.8",
+    "ocelot>=0.4.10",
     "pandas>=2.3.3",
     "pooch>=1.9.0",
     "pyphot>=2.1.1",
@@ -19,6 +19,7 @@ dependencies = [
 
 [tool.uv.sources]
 synthpop = { git = "https://github.com/emilyhunt/synthpop" }
+ocelot = { git = "https://github.com/emilyhunt/ocelot" }
 
 [build-system]
 requires = ["uv_build>=0.11.16,<0.12"]
