@@ -24,6 +24,7 @@ from gaianir_open_clusters.gaia_nir_config import (
     FAINTEST_GAIA_MAGNITUDE_USED,
     GAIA_GAIANIR_SEPARATION,
 )
+from gaianir_open_clusters.crowding import apply_background_crowding
 from astropy.coordinates import SkyCoord, CartesianRepresentation, CartesianDifferential
 from astropy import units as u
 from dustmaps.bayestar import BayestarQuery
@@ -80,7 +81,9 @@ def simulate_region(l, b, area, minimum_stars=1000):
             area = _inflate_area(area, len(result), minimum_stars)
 
         # PART 1: try simulating the region, be sure that it has enough stars
-        print(f"Simulating region... (attempt {attempt}, area {area*60**2:.3f} arcsec^2)")
+        print(
+            f"Simulating region... (attempt {attempt}, area {area * 60**2:.3f} arcmin^2)"
+        )
         result = _model.process_location(
             l_deg=l, b_deg=b, solid_angle=area, save_data=False
         )[0]
@@ -110,17 +113,54 @@ def simulate_region(l, b, area, minimum_stars=1000):
     _calculate_gaianir_astrometry(result)
     _calculate_gaia_astrometry(result)
     _calculate_combined_astrometry(result)
+    _sample_astrometry(result)
 
-    # # FINALLY, sample it randomly
-    # rng = np.random.default_rng()
+    print("Applying crowding.")
+    result, crowding_metadata = apply_background_crowding(result, area)
 
-    # result["pmra"] = rng.normal(loc=result["pmra_true"], scale=result["pmra_error"])
-    # result["pmdec"] = rng.normal(loc=result["pmdec_true"], scale=result["pmdec_error"])
-    # result["parallax"] = rng.normal(
-    #     loc=result["parallax_true"], scale=result["parallax_error"]
-    # )
+    print("Standardizing columns.")
+    result = _standardize_columns(result)
 
-    return result.drop(columns=["temperature_boring"]), area
+    return result, crowding_metadata
+
+
+def _standardize_columns(result):
+    result = result.drop(
+        columns=[
+            "temperature_boring",
+            "A_None",
+            "In_Final_Phase",
+            "vr_bc",
+            "mul",
+            "mub",
+            "x",
+            "y",
+            "z",
+            "U",
+            "V",
+            "W",
+            "VR_LSR",
+        ]
+    ).rename(
+        columns={
+            "iMass": "mass_initial",
+            "Mass": "mass",
+            "Dist": "distance",
+            "Gaia_G_EDR3": "gaia_dr3_g",
+            "Gaia_BP_EDR3": "gaia_dr3_bp_true",
+            "Gaia_RP_EDR3": "gaia_dr3_rp_true",
+            "2MASS_J": "2mass_j",
+            "2MASS_H": "2mass_h",
+            "2MASS_Ks": "2mass_k",
+            "N": "gaianir_n",
+            "N_R": "gaianir_r",
+            "N_J": "gaianir_j",
+            "N_H": "gaianir_h",
+            "N_K": "gaianir_k",
+        }
+    )
+
+    return result
 
 
 def _inflate_area(area, simulated_stars, minimum_stars):
@@ -229,6 +269,33 @@ def _calculate_combined_astrometry(result):
         result.loc[good_stars, "dec_error_gaia_dr5"],
         GAIA_GAIANIR_SEPARATION + gaianir_length / 2 + gaia_length / 2,
     )
+
+
+def _sample_astrometry(result):
+    rng = np.random.default_rng()
+
+    missions = [
+        "gaianir-l",
+        "gaianir-m",
+        "gaia_dr4",
+        "gaia_dr5",
+        "gaianir-l_combined",
+        "gaianir-m_combined",
+    ]
+
+    for mission in missions:
+        result[f"pmra_{mission}"] = rng.normal(
+            loc=result["pmra_true"], scale=result[f"pmra_error_{mission}"]
+        )
+        result[f"pmdec_{mission}"] = rng.normal(
+            loc=result["pmdec_true"], scale=result[f"pmdec_error_{mission}"]
+        )
+        if "combined" not in mission:
+            result[f"parallax_{mission}"] = rng.normal(
+                loc=result["parallax_true"], scale=result[f"parallax_error_{mission}"]
+            )
+
+    return result
 
 
 def _calculate_photometry(result, coords):
