@@ -133,7 +133,7 @@ class AstrometryModel:
         dec_error = parallax_error * 0.7
 
         pmra_error = parallax_error * 0.29 * (10 / self.years)
-        pmdec_error = pmra_error * 0.25 * (10 / self.years)
+        pmdec_error = parallax_error * 0.25 * (10 / self.years)
 
         return ra_error, dec_error, pmra_error, pmdec_error, parallax_error
 
@@ -181,7 +181,7 @@ class AstrometryModelElectronBased:
         dec_error = parallax_error * 0.7
 
         pmra_error = parallax_error * 0.29 * (10 / self.years)
-        pmdec_error = pmra_error * 0.25 * (10 / self.years)
+        pmdec_error = parallax_error * 0.25 * (10 / self.years)
 
         return ra_error, dec_error, pmra_error, pmdec_error, parallax_error
 
