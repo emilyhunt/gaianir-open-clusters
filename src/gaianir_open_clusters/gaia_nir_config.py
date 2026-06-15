@@ -6,6 +6,7 @@ used by the entire project.
 import pooch
 from pathlib import Path
 from gaianir_open_clusters.config import DATA_DIRECTORY
+from gala.potential import MilkyWayPotential
 
 
 # ASTROMETRY
@@ -63,10 +64,14 @@ GAIA_NIR_EFFECTIVE_WAVELENGTHS = {
     "GaiaNIR-L": 1550,
 }
 
-# Minimum observable separation between stars that GaiaNIR can handle before they are 
+# Minimum observable separation between stars that GaiaNIR can handle before they are
 # resolved as the same source
 # N.B.: this is in radians!
 GAIANIR_ANGULAR_RESOLUTION = {
     telescope: 1.22 * GAIA_NIR_EFFECTIVE_WAVELENGTHS[telescope] / 1e9 / aperture
     for telescope, aperture in GAIA_NIR_APERTURES.items()
 }
+
+
+# MILKY WAY PARAMETERS
+POTENTIAL = MilkyWayPotential(version="v2")

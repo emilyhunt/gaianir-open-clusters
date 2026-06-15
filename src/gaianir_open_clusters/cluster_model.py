@@ -115,25 +115,45 @@ class GaiaNIRObservationModel(BaseObservation):
         self._assert_simulated_cluster_not_reused(cluster)
         observation = cluster.observations[self.name]
 
-        # The astrometric models are relative to Gaia G, which isn't quite the same as N
-        # (especially with some reddening.) As an approximation, we just take the true
-        # G magnitude for the star and add an offset relative to the N-band extinction
-        # that the star would receive.
-        # observation["g_effective"] = (
-        #     observation["gaia_dr3_g_true"] + observation["extinction_gaianir_n"]
-        # )
-
-        gaia_nir_model = AstrometryModelElectronBased(self.mission_class, self.years)
-        ra_error, dec_error, pmra_error, pmdec_error, parallax_error = (
-            gaia_nir_model.predict(observation["gaianir_n"])
-        )
-
-        # Optionally also combine astrometry from Gaia to the GaiaNIR observation
+        # Add some gaia-related things
         observation["g_effective_gaia"] = observation["gaia_dr3_g_true"] + AG(
             observation["extinction"], observation["temperature"]
         )
+        observation["label"] = -1  # safe to ignore for Gaia astrometry
+
+        # Calculate astrometric uncertainties
+        if self.mission_class != "Gaia":
+            gaia_nir_model = AstrometryModelElectronBased(
+                self.mission_class, self.years
+            )
+            ra_error, dec_error, pmra_error, pmdec_error, parallax_error = (
+                gaia_nir_model.predict(observation["gaianir_n"])
+            )
+        else:
+            # Remove stars outside of the interpolation range
+            # TODO this is repetitive and messy - can improve?
+            good_stars = observation["g_effective_gaia"] < 25
+            ra_error = np.full(len(good_stars), np.nan)
+            dec_error = np.full(len(good_stars), np.nan)
+            pmra_error = np.full(len(good_stars), np.nan)
+            pmdec_error = np.full(len(good_stars), np.nan)
+            parallax_error = np.full(len(good_stars), np.nan)
+
+            gaia_model = AstrometryModel(self.mission_class, self.years)
+            (
+                ra_error[good_stars],
+                dec_error[good_stars],
+                pmra_error[good_stars],
+                pmdec_error[good_stars],
+                parallax_error[good_stars],
+            ) = gaia_model.predict(
+                observation.loc[good_stars],
+                mag_column="g_effective_gaia",
+                temperature_column="temperature",
+            )
+
+        # Optionally also combine astrometry from Gaia to the GaiaNIR observation
         if self.combined_astrometry and cluster.parameters.extinction < 25:
-            observation["label"] = -1  # safe to ignore for Gaia astrometry
             gaia_model = AstrometryModel(mission="Gaia", years=10)
             good_stars = (
                 observation["g_effective_gaia"] < self.combined_astrometry_max_gaia_mag
@@ -170,7 +190,7 @@ class GaiaNIRObservationModel(BaseObservation):
         column = "gaianir_n"
         if self.mission_class == "Gaia":
             column = "g_effective_gaia"
-            
+
         return [GaiaNIRSelectionFunction(self.maximum_magnitude, column=column)]
 
     def calculate_extinction(self, cluster: ocelot.simulate.cluster.SimulatedCluster):

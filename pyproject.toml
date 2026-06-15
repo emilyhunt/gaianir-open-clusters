@@ -6,6 +6,7 @@ dependencies = [
     "astropy>=7.2.0",
     "astroquery>=0.4.11",
     "dustapprox>=0.2.0",
+    "gala>=1.11.0",
     "ipykernel>=7.2.0",
     "matplotlib>=3.10.9",
     "ocelot>=0.4.10",
