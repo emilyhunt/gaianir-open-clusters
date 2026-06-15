@@ -86,6 +86,7 @@ def get_params_and_models(cluster, l, b, distance):
         observations=[
             GaiaNIRObservationModel(mission_class="GaiaNIR-L", years=10),
             GaiaNIRObservationModel(mission_class="GaiaNIR-M", years=10),
+            # todo add missing Gaia sim
         ]
     )
     return params, models
