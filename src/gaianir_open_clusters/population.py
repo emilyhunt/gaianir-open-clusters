@@ -120,7 +120,7 @@ def simulate_region(l, b, area, minimum_stars=1000):
     #     loc=result["parallax_true"], scale=result["parallax_error"]
     # )
 
-    return result.drop(columns=["temperature_boring"])
+    return result.drop(columns=["temperature_boring"]), area
 
 
 def _inflate_area(area, simulated_stars, minimum_stars):
