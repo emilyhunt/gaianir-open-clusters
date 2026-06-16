@@ -4,6 +4,7 @@ used by the entire project.
 """
 
 import pooch
+import numpy as np
 from pathlib import Path
 from gaianir_open_clusters.config import DATA_DIRECTORY
 from gala.potential import MilkyWayPotential
@@ -74,4 +75,64 @@ GAIANIR_ANGULAR_RESOLUTION = {
 
 
 # MILKY WAY PARAMETERS
+# MW potential to use for calculating orbit speeds
 POTENTIAL = MilkyWayPotential(version="v2")
+
+
+# GENERAL SIMULATION PARAMETERS
+# Locations to test
+SIMULATION_LONGITUDES = np.linspace(0, 360, num=60, endpoint=False)
+SIMULATION_LATITUDE = 0.0
+
+# Distances to simulate clusters at
+SIMULATION_DISTANCES = np.linspace(2000, 20000, num=10)
+
+
+# Test clusters to simulate
+SIMULATION_CLUSTER_PARAMETERS = dict(
+    pleiades=dict(
+        mass=1000,
+        log_age=8,
+        metallicity=0.0,
+        r_core=2.3,
+        r_tidal=11,
+        virial_ratio=0.5,
+    ),
+    embedded=dict(
+        mass=1000,
+        log_age=6,
+        metallicity=0.0,
+        r_core=0.5,
+        r_tidal=3,
+        virial_ratio=0.5,
+        extinction_boost=5  # This is added on to Green/Zucker A_V
+    ),
+    # big_embedded=dict(
+    #     mass=25000,
+    #     log_age=6.0,
+    #     metallicity=0.0,
+    #     r_core=0.75,
+    #     r_tidal=5,
+    #     virial_ratio=0.5,
+    #     extinction_boost=5
+    # ),
+    berkeley_29=dict(
+        mass=1500,
+        log_age=9.5,
+        metallicity=-0.5,
+        r_core=2.5,
+        r_tidal=15,
+        virial_ratio=0.5,
+    ),
+    # globular=dict(
+    #     mass=20000,
+    #     log_age=10,
+    #     metallicity=-1.5,
+    #     r_core=2.5,
+    #     r_tidal=15,
+    #     virial_ratio=0.5,
+    # ),
+)
+
+# deltaAv on the clusters is just a scale factor on their extinction
+DIFFERENTIAL_EXTINCTION_FACTOR = 0.1
