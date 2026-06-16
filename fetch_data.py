@@ -1,6 +1,8 @@
 """Fetches data for the project."""
 
 from gaianir_open_clusters import data
+from dustmaps.bayestar import fetch as fetch_bayestar
+from dustmaps.decaps import fetch as fetch_decaps
 
 
 print("Downloading kurucz atmosphere models")
@@ -14,6 +16,12 @@ print("Downloading BT-Settl atmosphere models")
 
 print("Downloading GaiaNIR simulation results")
 data.fetch_gaia_nir_astrometry()
+
+print(
+    "Downloading dust maps (will not re-download if you already have them on your machine)"
+)
+fetch_bayestar()
+fetch_decaps(mean_only=True, silence_warnings=True)
 
 
 print("Done!")
