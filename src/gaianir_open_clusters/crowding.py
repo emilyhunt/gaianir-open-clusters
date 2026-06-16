@@ -31,21 +31,30 @@ def apply_background_crowding(
 
 
 def apply_cluster_crowding(
-    cluster: pd.DataFrame, n_points_dist, magnitude_ppfunc, mission: str, seed=None
+    cluster: pd.DataFrame,
+    crowding_metadata: dict,
+    mission: str,
+    seed=None,
+    drop_stars: bool = True,
 ):
+    """Assumes that cluster is sorted by magnitude!"""
     rng = np.random.default_rng(seed)
     resolution = GAIANIR_ANGULAR_RESOLUTION[mission]
-    # Assert sorted
-    cluster = cluster.sort_values("gaianir_n").reset_index(drop=True)
+    poisson_param = crowding_metadata[f"density_param_{mission.lower()}"]
+
     good_cluster_stars = _sample_background_crowding(
-        cluster["gaianir_n"].to_numpy(), n_points_dist, magnitude_ppfunc, rng
+        cluster["gaianir_n"].to_numpy(),
+        poisson_param,
+        crowding_metadata["magnitude_ppfunc"],
+        rng,
     )
     good_cluster_stars_self = _radius_crowding(cluster, resolution)
-    cluster = cluster.loc[
-        np.logical_and(good_cluster_stars, good_cluster_stars_self)
-    ].reset_index(drop=True)
 
-    return cluster
+    good_stars = np.logical_and(good_cluster_stars, good_cluster_stars_self)
+    if not drop_stars:
+        return good_stars
+
+    return cluster.loc[good_stars].reset_index(drop=True)
 
 
 def _setup_background_crowding_stats(region: pd.DataFrame):
