@@ -1,5 +1,6 @@
 import os
 import sys
+import numpy as np
 from gaianir_open_clusters.gaia_nir_config import POTENTIAL
 from astropy.coordinates import (
     SkyCoord,
@@ -39,11 +40,11 @@ def get_circular_orbit_skycoord(l, b, distance, v_rho=0, v_z=0, v_phi_offset=0):
             pos_galactocentric.y.to(u.kpc).value,
             pos_galactocentric.z.to(u.kpc).value,
         ]
-    )[0]
+    )
 
     # Convert circular velocity to an angular velocity (rad/s) in a cylindrical frame
     v_phi_angular = (
-        (-v_circ[0].to(u.km / u.s).value - v_phi_offset)
+        (-v_circ.to(u.km / u.s).value - v_phi_offset)
         / pos_cylindrical.rho.to(u.km).value
         * u.rad
         / u.s
@@ -56,7 +57,9 @@ def get_circular_orbit_skycoord(l, b, distance, v_rho=0, v_z=0, v_phi_offset=0):
             phi=pos_cylindrical.phi,
             z=pos_cylindrical.z,
             differentials=CylindricalDifferential(
-                d_rho=v_rho * u.km / u.s, d_phi=v_phi_angular, d_z=v_z * u.km / u.s
+                d_rho=np.full(len(l), v_rho) * u.km / u.s,
+                d_phi=v_phi_angular,
+                d_z=np.full(len(l), v_z) * u.km / u.s,
             ),
         ),
         frame="galactocentric",
