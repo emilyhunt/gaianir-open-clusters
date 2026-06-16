@@ -29,13 +29,10 @@ print(f"{len(longitudes) - len(longitudes_to_do)} are already done")
 
 # Generate them!
 for i, longitude in enumerate(longitudes):
-    print(f"Longitude {i+1} of {len(longitudes)} (l={longitude:.2f})")
+    print(f"Longitude {i + 1} of {len(longitudes)} (l={longitude:.2f})")
     region, metadata = simulate_region(
         longitude, latitude, start_area, minimum_stars=minimum_stars
     )
-    region.to_parquet(
-        outdir
-        / f"{longitude:.3f}_{latitude:.3f}.parquet"
-    )
-    with open(outdir / f"{longitude:.3f}_{latitude:.3f}.parquet", 'wb') as file:
+    region.to_parquet(outdir / f"{longitude:.3f}_{latitude:.3f}.parquet")
+    with open(outdir / f"{longitude:.3f}_{latitude:.3f}_metadata.pickle", "wb") as file:
         pickle.dump(metadata, file)
