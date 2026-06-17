@@ -29,7 +29,7 @@ GAIA_GAIANIR_SEPARATION = 20
 
 # PHOTOMETRY
 # Faintest N-band or G-band magnitudes that the telescopes will observe
-FAINTEST_N_MAGNITUDE = 24
+FAINTEST_N_MAGNITUDE = 23
 FAINTEST_GAIA_MAGNITUDE = 21
 
 # Assumed faintest magnitudes for simulations. These aren't quite the faintest possible,

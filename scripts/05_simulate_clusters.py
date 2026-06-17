@@ -1,41 +1,31 @@
 import numpy as np
-import matplotlib.pyplot as plt
 import pandas as pd
 import pickle
 from astropy.coordinates import SkyCoord
 from astropy import units as u
-from astroquery.gaia import Gaia
-
-# import gaianir_open_clusters  # noqa: F401
 from gaianir_open_clusters.config import RESULTS_DIRECTORY
-from gaianir_open_clusters.cluster_model import GaiaNIRObservationModel
-from gaianir_open_clusters.population import simulate_region
+from gaianir_open_clusters.cluster_model import (
+    GaiaNIRObservationModel,
+    combine_observations,
+)
 from gaianir_open_clusters.gaia_nir_config import (
-    FAINTEST_N_MAGNITUDE_USED,
-    FAINTEST_GAIA_MAGNITUDE_USED,
     SIMULATION_CLUSTER_PARAMETERS,
     SIMULATION_DISTANCES,
     SIMULATION_LONGITUDES,
     SIMULATION_LATITUDE,
     DIFFERENTIAL_EXTINCTION_FACTOR,
 )
-from gaianir_open_clusters.crowding import apply_cluster_crowding
+from gaianir_open_clusters.util import get_circular_orbit_skycoord
 from ocelot.simulate import (
     SimulatedCluster,
     SimulatedClusterParameters,
     SimulatedClusterModels,
 )
-from ocelot.model.observation import (
-    GaiaDR3ObservationModel,
-    GenericSubsampleSelectionFunction,
-)
-from scipy.stats import poisson, ecdf
-from scipy.interpolate import interp1d
-from sklearn.neighbors import NearestNeighbors
 from dustmaps.bayestar import BayestarQuery
 from dustmaps.decaps import DECaPSQueryLite
-
-from gaianir_open_clusters.util import get_circular_orbit_skycoord
+from pathlib import Path
+from tqdm.contrib.concurrent import process_map
+import sys
 
 
 # SETTINGS
@@ -43,40 +33,7 @@ from gaianir_open_clusters.util import get_circular_orbit_skycoord
 # If you change cluster settings, you may need to do this - as they will not
 # automatically be re-generated
 FORCE_REGENERATION = False
-
-unnecessary_columns = [
-    "simulated_id",
-    "cluster_id",
-    "simulated_star",
-    "gaia_dr3_g_true",
-    "gaia_dr3_bp_true",
-    "gaia_dr3_rp_true",
-    "companions",
-    "mass_ratio",
-    "period",
-    "eccentricity",
-    "simulated_id_primary",
-    "ra",
-    "dec",
-    "pmra_true",
-    "pmdec_true",
-    "parallax_true",
-    "radial_velocity_true",
-    "extinction",
-    "gaianir_n_true",
-    "gaianir_r_true",
-    "gaianir_j_true",
-    "gaianir_h_true",
-    "gaianir_k_true",
-    "extinction_gaianir_n",
-    "extinction_gaianir_r",
-    "extinction_gaianir_j",
-    "extinction_gaianir_h",
-    "extinction_gaianir_k",
-    "unresolved_companions",
-    "selection_probability_GaiaNIRSelectionFunction",
-    "selection_probability",
-]
+PROCESSES = 6
 
 
 def get_clusters_to_simulate():
@@ -113,6 +70,10 @@ def get_clusters_to_simulate():
             outdir + f"{l:.3f}_{SIMULATION_LATITUDE:.3f}_{d:.3f}.parquet"
             for l, d in zip(longitudes, distances)
         ]
+        region_paths = [
+            "regions/" + f"{l:.3f}_{SIMULATION_LATITUDE:.3f}.parquet"
+            for l in longitudes
+        ]
 
         clusters.append(
             pd.DataFrame.from_dict(
@@ -121,6 +82,7 @@ def get_clusters_to_simulate():
                     l=longitudes,
                     b=SIMULATION_LATITUDE,
                     path=paths,
+                    path_region=region_paths,
                     distance=distances,
                     extinction=extinction_cluster,
                     differential_extinction=DIFFERENTIAL_EXTINCTION_FACTOR
@@ -180,10 +142,43 @@ def get_params_and_models(params):
         observations=[
             GaiaNIRObservationModel(mission_class="GaiaNIR-L", years=10),
             GaiaNIRObservationModel(mission_class="GaiaNIR-M", years=10),
-            # todo add missing Gaia sim
+            GaiaNIRObservationModel(
+                mission_class="Gaia",
+                years=10,
+                maximum_magnitude=21,
+                combined_astrometry=False,
+            ),
+            GaiaNIRObservationModel(
+                mission_class="Gaia",
+                years=5,
+                maximum_magnitude=21,
+                combined_astrometry=False,
+            ),
         ]
     )
     return params, models
+
+
+def simulate_cluster(df_row: pd.Series):
+    params, models = get_params_and_models(df_row)
+
+    metadata_file = (
+        RESULTS_DIRECTORY
+        / f"regions/{df_row['l']:.3f}_{df_row['b']:.3f}_metadata.pickle"
+    )
+
+    with open(metadata_file, "rb") as file:
+        crowding_metadata = pickle.load(file)
+
+    cluster = SimulatedCluster(parameters=params, models=models)
+    cluster.make()
+    observations = combine_observations(cluster.observations, crowding_metadata)
+
+    outfile = Path(RESULTS_DIRECTORY / df_row["path"])
+    outfile.parent.mkdir(exist_ok=True, parents=True)
+    observations.to_parquet(outfile)
+    
+    sys.stdout.flush()
 
 
 if __name__ == "__main__":
@@ -193,3 +188,15 @@ if __name__ == "__main__":
     print(f"Generated {len(clusters)} to simulate")
     to_simulate = restrict_to_unsimulated_clusters(clusters)
     print(f"... of which {len(to_simulate)} require simulating.")
+
+    # god i hate pandas (this is an easy way to get single rows as an iterable)
+    rows_as_list = [a_row for i_row, a_row in to_simulate.iterrows()]
+
+    map = process_map(
+        simulate_cluster,
+        rows_as_list,
+        max_workers=PROCESSES,
+        chunksize=1,
+        # miniters=1,
+        # maxinterval=1,
+    )

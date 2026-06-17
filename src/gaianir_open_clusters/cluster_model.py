@@ -11,6 +11,7 @@ from scipy.interpolate import interp1d
 # from gaiaunlimited.selectionfunctions import DR3SelectionFunctionTCG
 import numpy as np
 import pandas as pd
+import copy
 from numpy.typing import ArrayLike
 from astropy.coordinates import SkyCoord
 from astropy.units import Quantity
@@ -33,6 +34,7 @@ from gaianir_open_clusters.astrometry import (
     AstrometryModelElectronBased,
     combine_astrometry,
 )
+from gaianir_open_clusters.crowding import apply_cluster_crowding
 from ocelot.model.observation.gaia.photutils import AG
 
 
@@ -295,3 +297,119 @@ class GaiaNIRSelectionFunction(BaseSelectionFunction):
 
     def _query(self, observation: pd.DataFrame) -> np.ndarray:
         return (observation[self.column] < self.maximum_magnitude).astype(float)
+
+
+_GOOD_COLUMNS = [
+    "pmra",
+    "pmra_error",
+    "pmdec",
+    "pmdec_error",
+    "parallax",
+    "parallax_error",
+]
+
+_EXTRA_GOOD_COLUMNS = [
+    "ra",
+    "dec",
+    "l",
+    "b",
+    "mass",
+    "temperature",
+    "luminosity",
+    "log_g",
+    "gaianir_n",
+    "gaianir_r",
+    "gaianir_j",
+    "gaianir_h",
+    "gaianir_k",
+    "g_effective_gaia",
+]
+
+
+def combine_observations(
+    observations,
+    crowding_metadata,
+    main_star_columns=_EXTRA_GOOD_COLUMNS,
+    observation_columns=_GOOD_COLUMNS,
+):
+    """Utility function that can combine observations from multiple ocelot cluster
+    observations. This makes them a lot easier to save and load.
+
+    Assumes that the gaianir-l observation is the first one.
+    """
+    # Prevents us from impacting the original object
+    observations = copy.deepcopy(observations)
+
+    keys = []
+
+    merged_observation = None
+    keys = []
+
+    for name, observation in observations.items():
+        name = (
+            name.replace("-10-(combined)", "_combined")
+            .replace("-10", "_dr5")
+            .replace("-5", "_dr4")
+        )
+        short_name = name.replace("_combined", "")
+        keys.append(short_name)
+
+        if len(keys) == 0 and name != "gaianir-l_combined":
+            raise ValueError("The first observation must always be gaianir-l_combined.")
+
+        if name == "gaianir-l_combined":
+            observation = observation[
+                ["simulated_id"] + main_star_columns + observation_columns
+            ]
+        else:
+            observation = observation[["simulated_id"] + observation_columns]
+
+        observation[short_name] = True
+        observation = observation.rename(
+            columns={
+                "pmra": f"pmra_{name}",
+                "pmdec": f"pmdec_{name}",
+                "parallax": f"parallax_{name}",
+                "pmra_error": f"pmra_error_{name}",
+                "pmdec_error": f"pmdec_error_{name}",
+                "parallax_error": f"parallax_error_{name}",
+            }
+        )
+        if merged_observation is None:
+            merged_observation = observation
+        else:
+            merged_observation = merged_observation.merge(
+                observation,
+                on="simulated_id",
+                how="left",  # Todo: this assumes gaianir-l is first! Be sure of this
+            )
+        merged_observation[short_name] = merged_observation[short_name] == True  # noqa: E712
+
+    # Apply crowding
+    key_to_mission = {
+        "gaianir-l": "GaiaNIR-L",
+        "gaianir-m": "GaiaNIR-M",
+        "gaia_dr5": "Gaia",
+        "gaia_dr4": "Gaia",
+    }
+
+    merged_observation = merged_observation.sort_values("gaianir_n").reset_index(
+        drop=True
+    )
+
+    for key in keys:
+        good_stars = merged_observation[key]
+        merged_observation.loc[good_stars, key] = apply_cluster_crowding(
+            merged_observation.loc[good_stars],
+            crowding_metadata,
+            key_to_mission[key],
+            drop_stars=False,
+        )
+
+    return merged_observation.sort_values("simulated_id").reset_index(drop=True)
+
+    # merged_observation = (
+    #     merged_observation.loc[np.any(merged_observation[keys], axis=1)]
+    #     .sort_values("simulated_id")
+    #     .reset_index(drop=True)
+    # )
