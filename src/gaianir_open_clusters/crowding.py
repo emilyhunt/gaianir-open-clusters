@@ -67,8 +67,10 @@ def apply_cluster_crowding(
 
     # Apply additional crowding due to transmission limitations
     max_mag_transmit = crowding_metadata[f"max_magnitude_to_transmit_{mission}"]
-    if max_mag_transmit < cluster['gaianir_n'].max():
-        good_stars[good_stars] = cluster.loc[good_stars, "gaianir_n"] < max_mag_transmit
+    if max_mag_transmit < cluster["gaianir_n"].max():
+        good_stars[good_stars] = (
+            cluster.loc[good_stars, "gaianir_n"].to_numpy() < max_mag_transmit
+        )
 
     if not drop_stars:
         return good_stars
@@ -146,8 +148,12 @@ def _calculate_transmission_crowding(region, area, mission, detected):
 
 
 def _radius_crowding(cluster: pd.DataFrame, resolution_radians: float):
+    if len(cluster) == 0:
+        return np.ones(0, dtype=bool)
+    
     # Find nearest neighbors of every point
     values = np.radians(cluster[["l", "b"]].to_numpy())
+
     neighbor_estimator = NearestNeighbors(
         radius=resolution_radians, metric="haversine", n_jobs=1
     ).fit(values)

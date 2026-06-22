@@ -52,6 +52,7 @@ def get_clusters_to_simulate():
 
     # Assuming r_v is 3.1 and eqn 1 from http://argonaut.skymaps.info/usage to convert
     # bayestar reddening into a_v
+    # Todo refactor this to be one function please, so the 3.1 issue doesn't happen again
     extinction_bayestar = 0.884 * 3.1 * _bayestar_map.query(position, mode="best")
     extinction_zucker = 3.1 * _zucker_map.query(position, mode="mean")
     extinction = np.where(

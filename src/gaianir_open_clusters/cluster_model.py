@@ -157,25 +157,28 @@ class GaiaNIRObservationModel(BaseObservation):
         # Optionally also combine astrometry from Gaia to the GaiaNIR observation
         if self.combined_astrometry and cluster.parameters.extinction < 25:
             gaia_model = AstrometryModel(mission="Gaia", years=10)
-            good_stars = (
-                observation["g_effective_gaia"] < self.combined_astrometry_max_gaia_mag
-            )
-            ra_error_past, dec_error_past = gaia_model.predict(
-                observation.loc[good_stars],
-                mag_column="g_effective_gaia",
-                temperature_column="temperature",
-            )[:2]
-            pmra_error[good_stars], pmdec_error[good_stars] = combine_astrometry(
-                ra_error[good_stars],
-                dec_error[good_stars],
-                ra_error_past,
-                dec_error_past,
-                separation=self.combined_astrometry_separation
-                + gaia_model.years / 2
-                + gaia_nir_model.years / 2,
-            )
+            good_stars = np.logical_and.reduce((
+                observation["g_effective_gaia"] < self.combined_astrometry_max_gaia_mag,
+                observation["g_effective_gaia"].notna(),
+                observation["temperature"].notna(),
+            ))
+            if good_stars.sum() > 0:
+                ra_error_past, dec_error_past = gaia_model.predict(
+                    observation.loc[good_stars],
+                    mag_column="g_effective_gaia",
+                    temperature_column="temperature",
+                )[:2]
+                pmra_error[good_stars], pmdec_error[good_stars] = combine_astrometry(
+                    ra_error[good_stars],
+                    dec_error[good_stars],
+                    ra_error_past,
+                    dec_error_past,
+                    separation=self.combined_astrometry_separation
+                    + gaia_model.years / 2
+                    + gaia_nir_model.years / 2,
+                )
 
-            observation = observation.drop(columns="label")
+                observation = observation.drop(columns="label")
 
         observation["pmra_error"] = pmra_error
         observation["pmdec_error"] = pmdec_error

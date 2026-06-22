@@ -111,6 +111,8 @@ class AstrometryModel:
         is_ms = np.invert(is_giant)
 
         to_use = data[[mag_column, temperature_column]].to_numpy()
+
+        # Clip temperatures
         to_use[is_giant, 1] = np.clip(
             to_use[is_giant, 1], self.giant_temp_range[0], self.giant_temp_range[1]
         )
@@ -120,6 +122,16 @@ class AstrometryModel:
             self.main_sequence_temp_range[1],
         )
 
+        # Clip magnitudes - just at the bright end
+        to_use[:, 0] = np.clip(to_use[:, 0], self.g_range[0], np.inf)
+
+        # Check that we don't go off of the faint end
+        if np.any(to_use[:, 0] > self.g_range[1]):
+            raise ValueError(
+                "Some requested magnitudes are too faint for this interpolator."
+            )
+
+        # Calculate parallax error in microas
         parallax_error = np.zeros(len(data))
         parallax_error[is_giant] = self._giant_interpolator(to_use[is_giant])
         parallax_error[is_ms] = self._main_sequence_interpolator(to_use[is_ms])

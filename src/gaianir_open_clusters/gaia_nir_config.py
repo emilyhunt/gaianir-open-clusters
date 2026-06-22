@@ -95,7 +95,7 @@ SIMULATION_LONGITUDES = np.linspace(0, 360, num=60, endpoint=False)
 SIMULATION_LATITUDE = 0.0
 
 # Distances to simulate clusters at
-SIMULATION_DISTANCES = np.linspace(2000, 20000, num=10)
+SIMULATION_DISTANCES = np.append([500, 1000], np.linspace(2000, 20000, num=10))
 
 
 # Test clusters to simulate
@@ -106,6 +106,14 @@ SIMULATION_CLUSTER_PARAMETERS = dict(
         metallicity=0.0,
         r_core=2.3,
         r_tidal=11,
+        virial_ratio=0.5,
+    ),
+    ic_2602=dict(
+        mass=250,
+        log_age=7.4,
+        metallicity=0.0,
+        r_core=1.3,
+        r_tidal=9,
         virial_ratio=0.5,
     ),
     embedded=dict(
