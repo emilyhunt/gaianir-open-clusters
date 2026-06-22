@@ -318,8 +318,10 @@ def _calculate_photometry(result, coords):
 
 def _assign_extinctions(result, coords):
     # Grab extinction
-    result["extinction_green"] = _bayestar_map.query(coords, mode="best")
-    result["extinction_zucker"] = _zucker_map.query(coords, mode="mean")
+    # Assuming r_v is 3.1 and eqn 1 from http://argonaut.skymaps.info/usage to convert
+    # bayestar reddening into a_v
+    result["extinction_green"] = 0.884 * 3.1 * _bayestar_map.query(coords, mode="best")
+    result["extinction_zucker"] = 3.1 * _zucker_map.query(coords, mode="mean")
 
     result["extinction"] = np.where(
         result["extinction_zucker"].notna(),

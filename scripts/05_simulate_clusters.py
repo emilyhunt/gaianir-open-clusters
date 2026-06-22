@@ -50,8 +50,10 @@ def get_clusters_to_simulate():
     _bayestar_map = BayestarQuery(max_samples=1)
     _zucker_map = DECaPSQueryLite(mean_only=True)
 
-    extinction_bayestar = _bayestar_map.query(position, mode="best")
-    extinction_zucker = _zucker_map.query(position, mode="mean")
+    # Assuming r_v is 3.1 and eqn 1 from http://argonaut.skymaps.info/usage to convert
+    # bayestar reddening into a_v
+    extinction_bayestar = 0.884 * 3.1 * _bayestar_map.query(position, mode="best")
+    extinction_zucker = 3.1 * _zucker_map.query(position, mode="mean")
     extinction = np.where(
         np.isfinite(extinction_zucker), extinction_zucker, extinction_bayestar
     )
@@ -177,7 +179,7 @@ def simulate_cluster(df_row: pd.Series):
     outfile = Path(RESULTS_DIRECTORY / df_row["path"])
     outfile.parent.mkdir(exist_ok=True, parents=True)
     observations.to_parquet(outfile)
-    
+
     sys.stdout.flush()
 
 
