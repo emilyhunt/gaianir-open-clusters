@@ -34,7 +34,7 @@ def apply_background_crowding(
         good_mags, max_magnitude_to_transmit = _calculate_transmission_crowding(
             region, area, mission, detected
         )
-        region[detected] = good_mags
+        region.loc[region[detected], detected] = good_mags
         crowding_metadata[f"max_magnitude_to_transmit_{mission}"] = (
             max_magnitude_to_transmit
         )
@@ -136,10 +136,11 @@ def _calculate_transmission_crowding(region, area, mission, detected):
     good_mags = np.ones(n_detected_stars, dtype=bool)
     max_magnitude_to_transmit = 99
     if fraction_of_stars_to_keep < 1.0:
-        sorted_mags = np.sort(region.loc[detected, "N"])
+        magnitudes = region.loc[region[detected], "N"].to_numpy()
+        sorted_mags = np.sort(magnitudes)
         index_max = int(np.round(n_detected_stars * fraction_of_stars_to_keep))
         max_magnitude_to_transmit = sorted_mags[index_max]
-        good_mags = region.loc[detected, "N"] < max_magnitude_to_transmit
+        good_mags = magnitudes < max_magnitude_to_transmit
 
     return good_mags, max_magnitude_to_transmit
 
