@@ -2,7 +2,10 @@
 
 import numpy as np
 import pandas as pd
-from gaianir_open_clusters.gaia_nir_config import GAIANIR_ANGULAR_RESOLUTION
+from gaianir_open_clusters.gaia_nir_config import (
+    GAIANIR_ANGULAR_RESOLUTION,
+    GAIANIR_MAXIMUM_STARS_PER_SQUARE_DEGREE,
+)
 from scipy.stats import poisson, ecdf
 from scipy.interpolate import interp1d
 from sklearn.neighbors import NearestNeighbors
@@ -19,15 +22,24 @@ def apply_background_crowding(
     rng = np.random.default_rng(seed)
     magnitude_ppfunc = _setup_background_crowding_stats(region)
 
-    important_things = dict(area=area, magnitude_ppfunc=magnitude_ppfunc)
+    crowding_metadata = dict(area=area, magnitude_ppfunc=magnitude_ppfunc)
     for mission, resolution in GAIANIR_ANGULAR_RESOLUTION.items():
+        detected = f"uncrowded_{mission.lower()}"
         density_param = _get_poisson_param(region, area, resolution)
-        region[f"uncrowded_{mission.lower()}"] = _sample_background_crowding(
+        region[detected] = _sample_background_crowding(
             region["N"].to_numpy(), density_param, magnitude_ppfunc, rng
         )
-        important_things[f"density_param_{mission.lower()}"] = density_param
+        crowding_metadata[f"density_param_{mission.lower()}"] = density_param
 
-    return region, important_things
+        good_mags, max_magnitude_to_transmit = _calculate_transmission_crowding(
+            region, area, mission, detected
+        )
+        region[detected] = good_mags
+        crowding_metadata[f"max_magnitude_to_transmit_{mission}"] = (
+            max_magnitude_to_transmit
+        )
+
+    return region, crowding_metadata
 
 
 def apply_cluster_crowding(
@@ -42,6 +54,7 @@ def apply_cluster_crowding(
     resolution = GAIANIR_ANGULAR_RESOLUTION[mission]
     poisson_param = crowding_metadata[f"density_param_{mission.lower()}"]
 
+    # Apply crowding due to background
     good_cluster_stars = _sample_background_crowding(
         cluster["gaianir_n"].to_numpy(),
         poisson_param,
@@ -51,6 +64,12 @@ def apply_cluster_crowding(
     good_cluster_stars_self = _radius_crowding(cluster, resolution)
 
     good_stars = np.logical_and(good_cluster_stars, good_cluster_stars_self)
+
+    # Apply additional crowding due to transmission limitations
+    max_mag_transmit = crowding_metadata[f"max_magnitude_to_transmit_{mission}"]
+    if max_mag_transmit < cluster['gaianir_n'].max():
+        good_stars[good_stars] = cluster.loc[good_stars, "gaianir_n"] < max_mag_transmit
+
     if not drop_stars:
         return good_stars
 
@@ -102,6 +121,27 @@ def _sample_background_crowding(
         magnitudes[could_be_removed] < brightest_neighbor_magnitude
     )
     return good_stars
+
+
+def _calculate_transmission_crowding(region, area, mission, detected):
+    """Applies crowding due to the transmission limitations of Gaia/GaiaNIR, which limit
+    it to a maximum number of stars per square degree. For Gaia, this is ~1.4 million
+    (see Cantat-Gaudin+23); for GaiaNIR, this is assumed to be a lot higher.
+    """
+    n_detected_stars = region[detected].sum()
+    stars_per_square_degree = n_detected_stars / area
+    max_stars = GAIANIR_MAXIMUM_STARS_PER_SQUARE_DEGREE[mission]
+    fraction_of_stars_to_keep = np.clip(max_stars / stars_per_square_degree, 0.0, 1.0)
+
+    good_mags = np.ones(n_detected_stars, dtype=bool)
+    max_magnitude_to_transmit = 99
+    if fraction_of_stars_to_keep < 1.0:
+        sorted_mags = np.sort(region.loc[detected, "N"])
+        index_max = int(np.round(n_detected_stars * fraction_of_stars_to_keep))
+        max_magnitude_to_transmit = sorted_mags[index_max]
+        good_mags = region.loc[detected, "N"] < max_magnitude_to_transmit
+
+    return good_mags, max_magnitude_to_transmit
 
 
 def _radius_crowding(cluster: pd.DataFrame, resolution_radians: float):

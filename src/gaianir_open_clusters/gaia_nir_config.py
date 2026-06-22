@@ -73,6 +73,16 @@ GAIANIR_ANGULAR_RESOLUTION = {
     for telescope, aperture in GAIA_NIR_APERTURES.items()
 }
 
+# Maximum number of stars per square degree that can be observed. In Gaia, this has so
+# far been ~1.4 million stars per square degree (Cantat-Gaudin+2023); in GaiaNIR, it's
+# probably safe to assume that 30 years of developments in processing and downlink tech
+# mean this will be at least 10x'd.
+GAIANIR_MAXIMUM_STARS_PER_SQUARE_DEGREE = {
+    "Gaia": 1_400_000,
+    "GaiaNIR-M": 20_000_000,
+    "GaiaNIR-L": 20_000_000,
+}
+
 
 # MILKY WAY PARAMETERS
 # MW potential to use for calculating orbit speeds
