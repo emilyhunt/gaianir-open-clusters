@@ -5,7 +5,7 @@ import numpy as np
 from pyphot.config import units
 from gaianir_open_clusters.gaia_nir_config import GAIA_NIR_FILTERS
 from gaianir_open_clusters.config import RESULTS_DIRECTORY
-from scipy.interpolate import interp1d, LinearNDInterpolator
+from scipy.interpolate import interp1d, LinearNDInterpolator, RegularGridInterpolator
 import warnings
 from pathlib import Path
 import pandas as pd
@@ -53,11 +53,17 @@ class PhotometricModel:
             return
 
         # Grab data
-        self._photometric_grid = pd.read_parquet(_path_to_photometric_data)
+        self._photometric_grid = (
+            pd.read_parquet(_path_to_photometric_data)
+            .sort_values(["feh", "logg", "teff"])
+            .reset_index(drop=True)
+        )
 
-        # Specify some regions to clip teff and logg against
+        # Specify some regions to clip teff, logg, and feh against
         self._min_teff = self._photometric_grid["teff"].min()
         self._max_teff = self._photometric_grid["teff"].max()
+        self._min_feh = self._photometric_grid["feh"].min()
+        self._max_feh = self._photometric_grid["feh"].max()
 
         log_g_stats = (
             self._photometric_grid.groupby("teff")
@@ -71,12 +77,49 @@ class PhotometricModel:
             log_g_stats["teff"], log_g_stats["max"], bounds_error=True
         )
 
+        # Add some additional points where we assume solar metallicity so that no metallicity
+        # has NaN values. Not ideal, but I couldn't find more atmo models
+        photometry_sample_zero = self._photometric_grid.query("feh==0.0").reset_index(
+            drop=True
+        )
+        photometry_sample_low = photometry_sample_zero.copy()
+        photometry_sample_low["feh"] = -2.6
+        photometry_sample_high = photometry_sample_zero.copy()
+        photometry_sample_high["feh"] = 0.6
+        self._photometric_grid = pd.concat(
+            [photometry_sample_low, self._photometric_grid, photometry_sample_high]
+        ).reset_index(drop=True)
+
         # Then setup the interpolator
         self.columns = ["teff", "logg", "feh"]
         self.photometric_bands = list(GAIA_NIR_FILTERS.keys())
-        x = self._photometric_grid[self.columns].to_numpy()
+
+        all_temperatures = np.unique(self._photometric_grid["teff"])
+        all_log_g = np.unique(self._photometric_grid["logg"])
+        all_feh = np.unique(self._photometric_grid["feh"])
+
+        temp_grid, log_g_grid, feh_grid = np.meshgrid(
+            all_temperatures, all_log_g, all_feh, indexing="ij"
+        )
+
+        grid_2d = np.vstack([x.flatten() for x in (temp_grid, log_g_grid, feh_grid)]).T
+
+        # Make a simple triangulation-based interpolator & use it to get missing values
+        x = self._photometric_grid[["teff", "logg", "feh"]].to_numpy()
         y_big = self._photometric_grid[self.photometric_bands]
-        self._interpolator = LinearNDInterpolator(x, y_big)
+        linear_interp = LinearNDInterpolator(x, y_big)
+
+        output_shape = list(temp_grid.shape) + [len(self.photometric_bands)]
+        photometry_grid = linear_interp(grid_2d).reshape(output_shape)
+
+        # Then, set any still-missing values to zero
+        is_nan = np.invert(np.isfinite(photometry_grid))
+        photometry_grid[is_nan] = 0.0
+
+        # Finally, set up a grid interpolator, which is MUCH MUCH faster =)
+        self._interpolator = RegularGridInterpolator(
+            (all_temperatures, all_log_g, all_feh), photometry_grid
+        )
 
     def predict(self, data, metallicity, luminosity_in_L_sun=False):
         """Predict GaiaNIR (absolute) photometry in all bands."""
@@ -88,13 +131,14 @@ class PhotometricModel:
             luminosity_multiplier = constants.L_sun.value
 
         data["radius"] = np.sqrt(
-            data["luminosity"] * luminosity_multiplier
+            data["luminosity"]
+            * luminosity_multiplier
             / (4 * np.pi * constants.sigma_sb.value * data["temperature"] ** 4)
         )
 
         # Grab radius-free photometry
         x = data[["temperature", "log_g"]].copy()
-        x["metallicity"] = metallicity
+        x["metallicity"] = np.clip(metallicity, self._min_feh, self._max_feh)
 
         x["temperature"] = np.clip(x["temperature"], self._min_teff, self._max_teff)
         x["log_g"] = np.clip(
@@ -102,7 +146,10 @@ class PhotometricModel:
             self._min_log_g_int(x["temperature"]),
             self._max_log_g_int(x["temperature"]),
         )
-        result = self._interpolator(x.to_numpy())
+        x_array = x.to_numpy()
+        good_values = np.all(np.isfinite(x_array), axis=1)
+        result = np.full((x_array.shape[0], len(self.photometric_bands)), np.nan)
+        result[good_values] = self._interpolator(x_array[good_values])
 
         # Apply stellar radius correction
         # (magnitudes from pyphot are at the stellar surface)
