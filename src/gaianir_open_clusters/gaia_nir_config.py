@@ -91,7 +91,7 @@ POTENTIAL = MilkyWayPotential(version="v2")
 
 # GENERAL SIMULATION PARAMETERS
 # Locations to test
-SIMULATION_LONGITUDES = np.linspace(0, 360, num=60, endpoint=False)
+SIMULATION_LONGITUDES = np.linspace(0, 360, num=60, endpoint=False)[1:]  # skip l=0
 SIMULATION_LATITUDE = 0.0
 
 # Distances to simulate clusters at
