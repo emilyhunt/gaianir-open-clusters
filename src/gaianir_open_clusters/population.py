@@ -25,6 +25,7 @@ from gaianir_open_clusters.gaia_nir_config import (
     GAIA_GAIANIR_SEPARATION,
 )
 from gaianir_open_clusters.crowding import apply_background_crowding
+from gaianir_open_clusters.dust import PlanckQuery3D
 from astropy.coordinates import SkyCoord, CartesianRepresentation, CartesianDifferential
 from astropy import units as u
 from dustmaps.bayestar import BayestarQuery
@@ -62,6 +63,7 @@ _model = synthpop.SynthPop(
 )
 _bayestar_map = BayestarQuery(max_samples=1)
 _zucker_map = DECaPSQueryLite(mean_only=True)
+_planck_map = PlanckQuery3D()
 
 
 def simulate_region(l, b, area, minimum_stars=1000):
@@ -99,8 +101,13 @@ def simulate_region(l, b, area, minimum_stars=1000):
         # Somehow not everything has a temperature assigned??? lmao isochrones who are they
         result = result.loc[result["logTeff"].notna()].reset_index(drop=True)
 
+        print("    getting coordinates")
         coords = _get_skycoord(result)
-        result = _calculate_photometry(result, coords)
+
+        print("    calculating photometry")
+        result = _calculate_photometry(result, coords, l, b)
+
+        print("    adding true astrometry")
         _assign_true_astrometry(result, coords)
 
         result = result.loc[result["N"] < FAINTEST_N_MAGNITUDE].reset_index(drop=True)
@@ -170,7 +177,7 @@ def _inflate_area(area, simulated_stars, minimum_stars):
 
     # Otherwise, always at least double the area trialled, or at least scale
     # it based on the number of stars simulated last time
-    return area * np.clip(minimum_stars / simulated_stars * 2, 2, np.inf)
+    return area * np.clip(minimum_stars / simulated_stars * 1.2, 2, np.inf)
 
 
 def _assign_true_astrometry(result, coords):
@@ -298,7 +305,7 @@ def _sample_astrometry(result):
     return result
 
 
-def _calculate_photometry(result, coords):
+def _calculate_photometry(result, coords, l, b):
     result["label"] = 0
     result["luminosity"] = 10 ** result["logL"]
     result["temperature"] = 10 ** result["logTeff"]
@@ -312,29 +319,53 @@ def _calculate_photometry(result, coords):
     for band in PHOTOMETRY_PREDICTOR.photometric_bands:
         result[band] = result[band] + dist
 
-    _assign_extinctions(result, coords)
+    print("    getting extinctions")
+    _assign_extinctions(result, coords, l, b)
     return result
 
 
-def _assign_extinctions(result, coords):
+def _assign_extinctions(result, coords, l, b):
     # Grab extinction
     # Assuming r_v is 3.1 and eqn 1 from http://argonaut.skymaps.info/usage to convert
     # bayestar reddening into a_v
+    print("      green")
     result["extinction_green"] = 0.884 * 3.1 * _bayestar_map.query(coords, mode="best")
+    print("      zucker")
     result["extinction_zucker"] = 3.1 * _zucker_map.query(coords, mode="mean")
+    print("      planck")
 
+    # Planck ones are done with manual interpolation assuming a single extinction, which
+    # is faster and much more RAM-friendly for a really dense region
+    extinctions, distances = _planck_map.query(
+        SkyCoord(l=[l] * u.deg, b=b * u.deg, distance=1000 * u.pc, frame="galactic"),
+        mode="expon",
+        expon_return_full_distance_info=True,
+    )
+    extinctions, distances = extinctions[0], distances[0]
+    distance_star = np.clip(coords.distance.to(u.pc).value, 0, distances.max())
+    result["extinction_planck"] = 3.1 * np.interp(distance_star, distances, extinctions)
+
+    print("      -> combining")
     result["extinction"] = np.where(
         result["extinction_zucker"].notna(),
         result["extinction_zucker"],
         result["extinction_green"],
     )
 
+    # Take the Planck extinction value, otherwise take the Green+19/Zucker+25 values
+    result["extinction"] = np.where(
+        result["extinction"] > result["extinction_planck"],
+        result["extinction"],
+        result["extinction_planck"],
+    )
+
     # Apply extinctions
+    print("    mapping to GaiaNIR bands")
     query_data = pd.DataFrame.from_dict(
         {
             "A0": np.clip(
                 result["extinction"], 0, 50
-            ),  # Clip as relation only valid to A_V=50
+            ),  # Clip as relation only valid to A_V=50 (and it's mostly linear at that point anyway)
             "R0": 3.1,
             "teff": result["temperature"],
         }

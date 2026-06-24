@@ -23,6 +23,7 @@ from ocelot.simulate import (
 )
 from dustmaps.bayestar import BayestarQuery
 from dustmaps.decaps import DECaPSQueryLite
+from gaianir_open_clusters.dust import PlanckQuery3D
 from pathlib import Path
 from tqdm.contrib.concurrent import process_map
 import sys
@@ -49,16 +50,20 @@ def get_clusters_to_simulate():
     # Grab extinction
     _bayestar_map = BayestarQuery(max_samples=1)
     _zucker_map = DECaPSQueryLite(mean_only=True)
+    _planck_map = PlanckQuery3D()
+
 
     # Assuming r_v is 3.1 and eqn 1 from http://argonaut.skymaps.info/usage to convert
     # bayestar reddening into a_v
     # Todo refactor this to be one function please, so the 3.1 issue doesn't happen again
     extinction_bayestar = 0.884 * 3.1 * _bayestar_map.query(position, mode="best")
     extinction_zucker = 3.1 * _zucker_map.query(position, mode="mean")
+    extinction_planck = 3.1 * _planck_map.query(position, mode="expon")
     extinction = np.where(
         np.isfinite(extinction_zucker), extinction_zucker, extinction_bayestar
     )
-    del _bayestar_map, _zucker_map
+    extinction = np.where(extinction > extinction_planck, extinction, extinction_planck)
+    del _bayestar_map, _zucker_map, _planck_map
 
     # Create a dataframe of everything to simulate
     clusters = []
