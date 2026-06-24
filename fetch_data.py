@@ -3,6 +3,7 @@
 from gaianir_open_clusters import data
 from dustmaps.bayestar import fetch as fetch_bayestar
 from dustmaps.decaps import fetch as fetch_decaps
+from dustmaps.planck import fetch as fetch_planck
 
 
 print("Downloading kurucz atmosphere models")
@@ -22,6 +23,7 @@ print(
 )
 fetch_bayestar()
 fetch_decaps(mean_only=True, silence_warnings=True)
+fetch_planck()
 
 
 print("Done!")
