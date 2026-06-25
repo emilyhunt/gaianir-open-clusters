@@ -314,6 +314,9 @@ _GOOD_COLUMNS = [
 _EXTRA_GOOD_COLUMNS = [
     "ra",
     "dec",
+    "pmra_true",
+    "pmdec_true",
+    "parallax_true",
     "l",
     "b",
     "mass",

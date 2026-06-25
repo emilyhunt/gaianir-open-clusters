@@ -87,6 +87,7 @@ class PlanckQuery3D:
             raise ValueError(f"selected mode '{mode}' not recognized.")
 
     def _calculate_maximum_distance(self, l_degrees):
+        # Todo refactor to use util.position_to_max_galaxy_distance
         r_sun_cos_l = 2 * self.r_sun * np.cos(np.radians(l_degrees))
         return (
             r_sun_cos_l

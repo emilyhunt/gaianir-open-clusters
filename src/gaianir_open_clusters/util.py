@@ -6,6 +6,7 @@ from astropy.coordinates import (
     SkyCoord,
     CylindricalRepresentation,
     CylindricalDifferential,
+    galactocentric_frame_defaults,
 )
 from astropy import units as u
 
@@ -65,3 +66,14 @@ def get_circular_orbit_skycoord(l, b, distance, v_rho=0, v_z=0, v_phi_offset=0):
         frame="galactocentric",
     )
     return coords_full.transform_to("icrs")
+
+
+DEFAULT_R_SUN = galactocentric_frame_defaults.get()["galcen_distance"].to(u.pc).value
+
+
+def position_to_max_galaxy_distance(l_degrees, r_galaxy, r_sun=DEFAULT_R_SUN):
+    """Converts a given position (in l) to the distance to a certain galactocentric
+    radius. E.g. at l=180, this returns ~12 kpc when r_galaxy=20 kpc.
+    """
+    r_sun_cos_l = 2 * r_sun * np.cos(np.radians(l_degrees))
+    return (r_sun_cos_l + np.sqrt(r_sun_cos_l**2 - 4 * (r_sun**2 - r_galaxy**2))) / 2

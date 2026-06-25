@@ -97,7 +97,6 @@ SIMULATION_LATITUDE = 0.0
 # Distances to simulate clusters at
 SIMULATION_DISTANCES = np.append([500, 1000], np.linspace(2000, 20000, num=10))
 
-
 # Test clusters to simulate
 SIMULATION_CLUSTER_PARAMETERS = dict(
     pleiades=dict(
@@ -123,7 +122,7 @@ SIMULATION_CLUSTER_PARAMETERS = dict(
         r_core=0.5,
         r_tidal=3,
         virial_ratio=0.5,
-        extinction_boost=5  # This is added on to Green/Zucker A_V
+        extinction_boost=5,  # This is added on to Green/Zucker A_V
     ),
     # big_embedded=dict(
     #     mass=25000,
@@ -154,3 +153,18 @@ SIMULATION_CLUSTER_PARAMETERS = dict(
 
 # deltaAv on the clusters is just a scale factor on their extinction
 DIFFERENTIAL_EXTINCTION_FACTOR = 0.1
+
+# Assumed magnitude cuts on each mission, for *the limit of useful stars* in the survey
+# and *not* the limit of all stars
+# This is quite an important parameter! It was set assuming that:
+# - Gaia DR3's utlity drops at b=0 around G~18
+# - DR4 and DR5 should improve on that a little bit
+# - GaiaNIR was set to have a faint end with similar minimum-utlity level to Gaia
+# - GaiaNIR-l is a little bit better owing to its collecting area & better resolution
+SIMULATION_FINAL_MAGNITUDE_LIMITS = {
+    "gaianir-l": {"band": "gaianir_n", "limit": 20.5},
+    "gaianir-m": {"band": "gaianir_n", "limit": 20},
+    "gaia_dr5": {"band": "g_effective_gaia", "limit": 19},
+    "gaia_dr4": {"band": "g_effective_gaia", "limit": 18.5},
+    "gaia_dr3": {"band": "g_effective_gaia", "limit": 18},
+}
