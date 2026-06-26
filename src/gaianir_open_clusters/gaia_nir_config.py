@@ -91,11 +91,11 @@ POTENTIAL = MilkyWayPotential(version="v2")
 
 # GENERAL SIMULATION PARAMETERS
 # Locations to test
-SIMULATION_LONGITUDES = np.linspace(0, 360, num=60, endpoint=False)[1:]  # skip l=0
+SIMULATION_LONGITUDES = np.linspace(0, 360, num=180, endpoint=False)[1:]
 SIMULATION_LATITUDE = 0.0
 
 # Distances to simulate clusters at
-SIMULATION_DISTANCES = np.append([500, 1000], np.linspace(2000, 20000, num=10))
+SIMULATION_DISTANCES = np.append([250, 500, 750, 1000, 1250, 1500, 1750], np.linspace(2000, 20000, num=37))
 
 # Test clusters to simulate
 SIMULATION_CLUSTER_PARAMETERS = dict(
@@ -134,7 +134,7 @@ SIMULATION_CLUSTER_PARAMETERS = dict(
     #     extinction_boost=5
     # ),
     berkeley_29=dict(
-        mass=1500,
+        mass=1000,
         log_age=9.5,
         metallicity=-0.5,
         r_core=2.5,

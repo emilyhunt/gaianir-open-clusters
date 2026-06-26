@@ -85,10 +85,15 @@ def _calculate_cluster_density(
     cluster_info,
 ):
     """Performs successive KDEs to estimate the peak density of a cluster."""
-    # Todo this code fails at l=0 - probably not an issue, but bear in mind
-    if np.any(l > 270) and np.any(l < 90):
-        raise ValueError("Coordinate discontinuities are not supported.")
+    # Account for discontinuities
+    frame = SkyCoord(
+        l=cluster_info["l"], b=cluster_info["b"], unit="deg", frame="galactic"
+    ).skyoffset_frame()
+    coords = SkyCoord(l=l, b=b, unit="deg", frame="galactic").transform_to(frame)
+    l = coords.lon.to(u.deg).value
+    b = coords.lat.to(u.deg).value
 
+    # Measure KDE stuff!
     n_points = len(l)
 
     positions = np.vstack((l, b))
@@ -101,7 +106,7 @@ def _calculate_cluster_density(
     kde_full = gaussian_kde(np.vstack((l, b, pmra, pmdec, parallax)))
 
     return (
-        n_points * kde_pos((cluster_info["l"], cluster_info["b"]))[0],
+        n_points * kde_pos((0.0, 0.0))[0],
         n_points * kde_pm((cluster_info["pmra"], cluster_info["pmdec"]))[0],
         n_points * kde_parallax(cluster_info["parallax"])[0],
         n_points
@@ -133,6 +138,8 @@ def measure_region_density(
     use_combined: bool = True,
     bandwidth_method: str = "scott",
 ):
+    if np.any(region["l"] > 270) and np.any(region["l"] < 90):
+        raise ValueError("Coordinate discontinuities are not supported.")
     for mission in missions:
         maglim = SIMULATION_FINAL_MAGNITUDE_LIMITS[mission]
         key_out = mission
@@ -325,22 +332,30 @@ def measure_hr24_selection_function(simulated_clusters_full):
         simulated_clusters_full["med_error_gaia_dr3_empirical"],
     ) = n_stars_predictor(coords, simulated_clusters_full)
 
-    simulated_clusters_full["rho_data_gaia_dr3_empirical"] = density_estimator(
-        simulated_clusters_full["l"],
-        simulated_clusters_full["b"],
-        simulated_clusters_full["pmra"],
-        simulated_clusters_full["pmdec"],
-        1000 / simulated_clusters_full["distance"],
+    not_too_close = simulated_clusters_full["distance"] > 500
+
+    simulated_clusters_full.loc[not_too_close, "rho_data_gaia_dr3_empirical"] = (
+        density_estimator(
+            simulated_clusters_full.loc[not_too_close, "l"],
+            simulated_clusters_full.loc[not_too_close, "b"],
+            simulated_clusters_full.loc[not_too_close, "pmra"],
+            simulated_clusters_full.loc[not_too_close, "pmdec"],
+            1000 / simulated_clusters_full.loc[not_too_close, "distance"],
+        )
     )
 
     selection_function = HR24SelectionFunction()
 
     for m in ("gaia_dr3_empirical",):
-        good_points = np.logical_and(
-            np.isfinite(simulated_clusters_full[f"med_error_{m}"]),
-            simulated_clusters_full[f"n_stars_{m}"] != 0,
+        good_points = np.logical_and.reduce(
+            (
+                np.isfinite(simulated_clusters_full[f"med_error_{m}"]),
+                simulated_clusters_full[f"n_stars_{m}"] != 0,
+                not_too_close,
+            )
         )
         simulated_clusters_full[f"probability_{m}"] = 0.0
+        simulated_clusters_full.loc[np.invert(not_too_close), f"probability_{m}"] = 1.0
         correction_factor = 1.0
 
         simulated_clusters_full.loc[good_points, f"probability_{m}"] = (
