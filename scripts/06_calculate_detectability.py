@@ -9,8 +9,8 @@ import pickle
 
 from gaianir_open_clusters.config import (
     RESULTS_DIRECTORY,
-    SIMULATION_FINAL_MAGNITUDE_LIMITS,
 )
+from gaianir_open_clusters.gaia_nir_config import SIMULATION_FINAL_MAGNITUDE_LIMITS
 from gaianir_open_clusters.util import position_to_max_galaxy_distance
 
 from hr_selection_function import (
@@ -253,7 +253,9 @@ def add_gaia_dr3_uncertainties_based_on_sampling(region, seed=None):
 
 def _fetch_unique_locations(simulated_clusters):
     unique_locations = (
-        simulated_clusters[["l", "b", "distance", "pmra", "pmdec", "path_region"]]
+        simulated_clusters[
+            ["l", "b", "distance", "pmra", "pmdec", "parallax", "path_region"]
+        ]
         .drop_duplicates()
         .sort_values(["l", "b", "distance"])
         .reset_index(drop=True)
@@ -269,6 +271,7 @@ def measure_cluster_densities(simulated_clusters):
         members = pd.read_parquet(RESULTS_DIRECTORY / a_row["path"])
         cluster_density_df[i_row] = measure_cluster_density(a_row, members)
 
+    print("")
     cluster_density_df = pd.DataFrame.from_dict(cluster_density_df, orient="index")
     simulated_clusters_with_density = simulated_clusters.join(cluster_density_df)
     return simulated_clusters_with_density
@@ -296,6 +299,7 @@ def measure_region_densities(simulated_clusters):
             measure_region_density(valid_clusters, region, region_area)
         )
 
+    print("")
     region_density_df = pd.concat(region_density_df, ignore_index=True).drop(
         columns=["path_region", "parallax"]
     )
