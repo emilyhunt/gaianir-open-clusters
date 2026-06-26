@@ -9,11 +9,11 @@ from dustmaps.planck import fetch as fetch_planck
 print("Downloading kurucz atmosphere models")
 data.fetch_kurucz_models()
 
+# print("Downloading BT-Settl atmosphere models")
+# data.fetch_btsettl_models()  # Todo: add a download link for them
+
 print("Downloading ocelot data")
 data.fetch_ocelot_data()
-
-print("Downloading BT-Settl atmosphere models")
-# data.fetch_ocelot_data()
 
 print("Downloading GaiaNIR simulation results")
 data.fetch_gaia_nir_astrometry()
