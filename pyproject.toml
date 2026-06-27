@@ -15,6 +15,7 @@ dependencies = [
     "pooch>=1.9.0",
     "pyphot>=2.1.1",
     "ruff>=0.15.14",
+    "shapely>=2.1.2",
     "synphot>=1.7.0",
     "synthpop",
 ]
