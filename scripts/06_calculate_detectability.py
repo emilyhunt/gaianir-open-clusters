@@ -11,7 +11,10 @@ from gaianir_open_clusters.config import (
     RESULTS_DIRECTORY,
 )
 from gaianir_open_clusters.gaia_nir_config import SIMULATION_FINAL_MAGNITUDE_LIMITS
-from gaianir_open_clusters.util import position_to_max_galaxy_distance
+from gaianir_open_clusters.util import (
+    position_to_max_galaxy_distance,
+    add_gaia_dr3_uncertainties_based_on_sampling,
+)
 
 from hr_selection_function import (
     HR24SelectionFunction,
@@ -226,36 +229,6 @@ def measure_region_density(
             )
 
     return cluster_locations
-
-
-def add_gaia_dr3_uncertainties_based_on_sampling(region, seed=None):
-    """Adds approximate Gaia DR3 observations to a region, based on back-extrapolating
-    uncertainties from Gaia DR4.
-    """
-    # Make errors based on scale factors
-    parallax_scale = np.sqrt(66 / 34)
-    pm_scale = 66 / 34 * parallax_scale
-
-    region["pmra_error_gaia_dr3"] = region["pmra_error_gaia_dr4"] * pm_scale
-    region["pmdec_error_gaia_dr3"] = region["pmdec_error_gaia_dr4"] * pm_scale
-    region["parallax_error_gaia_dr3"] = (
-        region["parallax_error_gaia_dr4"] * parallax_scale
-    )
-
-    # Resample based on scale factors
-    rng = np.random.default_rng(seed)
-
-    region["pmra_gaia_dr3"] = rng.normal(
-        loc=region["pmra_true"], scale=region["pmra_error_gaia_dr4"]
-    )
-    region["pmdec_gaia_dr3"] = rng.normal(
-        loc=region["pmdec_true"], scale=region["pmdec_error_gaia_dr4"]
-    )
-    region["parallax_gaia_dr3"] = rng.normal(
-        loc=region["parallax_true"], scale=region["parallax_error_gaia_dr4"]
-    )
-
-    return region
 
 
 def _fetch_unique_locations(simulated_clusters):

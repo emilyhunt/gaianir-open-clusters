@@ -77,3 +77,33 @@ def position_to_max_galaxy_distance(l_degrees, r_galaxy, r_sun=DEFAULT_R_SUN):
     """
     r_sun_cos_l = 2 * r_sun * np.cos(np.radians(l_degrees))
     return (r_sun_cos_l + np.sqrt(r_sun_cos_l**2 - 4 * (r_sun**2 - r_galaxy**2))) / 2
+
+
+def add_gaia_dr3_uncertainties_based_on_sampling(region, seed=None):
+    """Adds approximate Gaia DR3 observations to a region, based on back-extrapolating
+    uncertainties from Gaia DR4.
+    """
+    # Make errors based on scale factors
+    parallax_scale = np.sqrt(66 / 34)
+    pm_scale = 66 / 34 * parallax_scale
+
+    region["pmra_error_gaia_dr3"] = region["pmra_error_gaia_dr4"] * pm_scale
+    region["pmdec_error_gaia_dr3"] = region["pmdec_error_gaia_dr4"] * pm_scale
+    region["parallax_error_gaia_dr3"] = (
+        region["parallax_error_gaia_dr4"] * parallax_scale
+    )
+
+    # Resample based on scale factors
+    rng = np.random.default_rng(seed)
+
+    region["pmra_gaia_dr3"] = rng.normal(
+        loc=region["pmra_true"], scale=region["pmra_error_gaia_dr4"]
+    )
+    region["pmdec_gaia_dr3"] = rng.normal(
+        loc=region["pmdec_true"], scale=region["pmdec_error_gaia_dr4"]
+    )
+    region["parallax_gaia_dr3"] = rng.normal(
+        loc=region["parallax_true"], scale=region["parallax_error_gaia_dr4"]
+    )
+
+    return region
